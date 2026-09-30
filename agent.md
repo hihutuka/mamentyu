@@ -72,7 +72,7 @@
 - expense_claims: id(uuid), job_id(uuid FK), member_id(uuid FK), fine_amount(int default 0), medic_used(bool default false), medic_cost(int default 0), other_cost(int default 0), total(int generated: fine+medic+other), status(text: 未申告/申請中/補填済), note(text), updated_at, UNIQUE(job_id, member_id)
 - pool_transactions: id(uuid), type(text: 入金/出金), amount(int check >0), claim_id(uuid FK nullable), job_id(uuid FK nullable), handled_by(uuid FK members), memo(text), created_at
 
-### 6.2 schema.sql叩き台（`schema.sql` に実体あり）
+### 6.2 setup.sql（`setup.sql` に実体あり、これ1つを実行）
 ```sql
 create table crime_types(id serial primary key, category text not null check (category in ('準大型','大型')), name text unique not null, capacity int not null, default_fine int default 0, default_medic int default 0);
 insert into crime_types(category, name, capacity) values
