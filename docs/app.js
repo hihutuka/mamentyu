@@ -571,6 +571,45 @@ window.deleteClaim = async (claimId) => {
   }
   render();
 };
+window.deleteTx = async (txId) => {
+  if (!isBoss()) return;
+  const t = CACHE.pool.find(x => String(x.id) === String(txId));
+  if (!t) return;
+  const msg = t.claim_id
+    ? `この出金を削除しますか？紐づく申告は申請中に戻ります（${man(t.amount)} ${t.memo || ""}）。`
+    : `この記録を削除しますか？（${t.type} ${man(t.amount)} ${t.memo || ""}）`;
+  if (!await confirmYesNo(msg)) return;
+  if (MODE === "remote") {
+    const r = await sb().from("pool_transactions").delete().eq("id", txId);
+    if (r.error) return alert("削除失敗: " + r.error.message);
+    if (t.claim_id) await sb().from("expense_claims").update({ status: "申請中" }).eq("id", t.claim_id);
+    await pullRemote();
+  } else {
+    CACHE.pool = CACHE.pool.filter(x => String(x.id) !== String(txId));
+    if (t.claim_id) { const c = CACHE.claims.find(x => String(x.id) === String(t.claim_id)); if (c) c.status = "申請中"; }
+    persistLocal();
+  }
+  render();
+};
+window.adjustBalance = async (e) => {
+  e.preventDefault();
+  if (!isBoss()) return;
+  const target = Number(new FormData(e.target).get("target"));
+  if (!target && target !== 0) return alert("金額を入力（万単位）");
+  const diff = target - poolBalance();
+  if (!diff) return alert("差額がありません");
+  const row = { type: diff > 0 ? "入金" : "出金", amount: Math.abs(diff), memo: "残高調整" };
+  if (!await confirmYesNo(`残高を${man(poolBalance())}から${man(target)}に調整します（${row.type}${man(row.amount)}）。`)) return;
+  if (MODE === "remote") {
+    const r = await sb().from("pool_transactions").insert(row).select("id,type,amount,memo,claim_id,job_id,created_at").single();
+    if (r.error) return alert("登録失敗: " + r.error.message);
+    CACHE.pool.push(r.data);
+  } else {
+    CACHE.pool.push({ id: uid(), ...row, created_at: new Date().toISOString() });
+    persistLocal();
+  }
+  render();
+};
 window.setCrimeFilter = (id) => { crimeFilter = crimeFilter === id ? 0 : id; render(); };
 window.exportJSON = () => {
   const a = document.createElement("a");
@@ -804,7 +843,9 @@ function viewPool() {
   <div class="lock-note">プールを開くにはログインが必要です。右上からログインしてください。</div></section>`;
   const txs = CACHE.pool.slice().reverse();
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Pool</h2>
-  <div class="data-panel"><span class="panel-label">Balance</span><div class="big-num">${isBoss() ? man(poolBalance()) : "***"}</div><div class="sub">プール残高</div></div>
+  <div class="data-panel"><span class="panel-label">Balance</span><div class="big-num">${isBoss() ? man(poolBalance()) : "***"}</div><div class="sub">プール残高（万単位）</div>
+  <form onsubmit="adjustBalance(event)" class="tech-form" style="margin-top:12px;"><div class="field"><label>正しい残高（万）— 差額を調整記録します</label><input name="target" type="number" min="0" placeholder="例: 5000" /></div>
+  <div style="margin-top:8px;"><button class="btn-ghost">残高を合わせる</button></div></form></div>
   ${isBoss() ? `<div class="data-panel" style="margin-top:24px;"><span class="panel-label">In / Out</span>
     <form onsubmit="addPool(event)" class="tech-form"><div class="form-row c2">
       <div class="field"><label>種別</label><select name="type"><option>入金</option><option>出金</option></select></div>
@@ -814,8 +855,8 @@ function viewPool() {
   : `<p class="lock-note">入出金登録にはloginが必要です。</p>`}
   </section>
   <section class="tech-section"><span class="sec-num">02</span><h2>Ledger</h2>
-  <table class="tech-table"><tr><th>種別</th><th>金額</th><th>メモ</th><th>日時</th></tr>
-  ${txs.map(t => `<tr><td>${statusBadge(t.type === "入金" ? "申請中" : "補填済み")} ${esc(t.type)}</td><td><b>${man(t.amount)}</b></td><td>${esc(t.memo || "")}</td><td style="font-size:12px;">${esc((t.created_at || "").slice(0, 16))}</td></tr>`).join("") || '<tr><td colspan="4">履歴なし</td></tr>'}</table></section>`;
+  <table class="tech-table"><tr><th>種別</th><th>金額</th><th>メモ</th><th>日時</th><th></th></tr>
+  ${txs.map(t => `<tr><td>${statusBadge(t.type === "入金" ? "申請中" : "補填済み")} ${esc(t.type)}</td><td><b>${man(t.amount)}</b></td><td>${esc(t.memo || "")}</td><td style="font-size:12px;">${esc((t.created_at || "").slice(0, 16))}</td><td><button onclick="deleteTx('${t.id}')" class="btn-ghost" style="padding:4px 12px;font-size:12px;">削除</button></td></tr>`).join("") || '<tr><td colspan="5">履歴なし</td></tr>'}</table></section>`;
 }
 function viewMembers() {
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Members</h2>
