@@ -791,7 +791,7 @@ function viewJobDetail(id) {
     ${hexProgress(j, claims)}
     <div style="margin-top:8px;">${j.participants.map(p => `<span class="chip">${esc(p)}</span>`).join("") || '<span class="sub">参加者なし</span>'}
     ${j.participants.length ? `<button onclick="leaveJob('${j.id}')" class="btn-ghost" style="padding:4px 12px;font-size:12px;margin-left:8px;">離脱する</button>` : ""}</div>
-    ${isBoss() ? `<div style="margin-top:12px;"><button onclick="markAllPaid('${j.id}')" class="btn-accent">全員を一括補填済みにする</button></div>` : ""}
+    ${isBoss() && j.status === "精算中" ? `<div style="margin-top:12px;"><button onclick="markAllPaid('${j.id}')" class="btn-accent">全員を一括補填済みにする</button></div>` : ""}
     ${canManageJob(j) && j.status === "参加募集中" ? `<div style="margin-top:12px;"><button onclick="closeRecruit('${j.id}')" class="btn-accent">募集を締め切る</button></div>` : ""}
     ${canManageJob(j) && j.status === "精算中" ? `<div style="margin-top:12px;"><button onclick="reopenJob('${j.id}')" class="btn-ghost">締め切りを解除する</button></div>` : ""}
     ${isBoss() && j.status === "精算中" ? `<div style="margin-top:12px;"><button onclick="completeJob('${j.id}')" class="btn-primary" style="width:auto;">清算完了にする</button></div>` : ""}
@@ -897,4 +897,24 @@ document.getElementById("loginBtn").onclick = async () => {
 document.getElementById("loginClose").onclick = () => document.getElementById("loginModal").classList.add("hidden");
 document.getElementById("logoutBtn").onclick = () => { logoutUser(); };
 if (!location.hash) location.hash = "#/jobs";
-boot().then(render);
+let rtTimer = null;
+async function onRemoteChange() {
+  if (MODE !== "remote") return;
+  if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  clearTimeout(rtTimer);
+  rtTimer = setTimeout(async () => { try { await pullRemote(); render(); } catch (e) { console.warn(e); } }, 800);
+}
+function subscribeRealtime() {
+  if (!sb() || MODE !== "remote") return;
+  try {
+    sb().channel("gang")
+      .on("postgres_changes", { event: "*", schema: "public", table: "crime_jobs" }, onRemoteChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "job_participants" }, onRemoteChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "expense_claims" }, onRemoteChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pool_transactions" }, onRemoteChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "members" }, onRemoteChange)
+      .subscribe();
+  } catch (e) { console.warn("realtime failed", e); }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) onRemoteChange(); });
+boot().then(() => { render(); subscribeRealtime(); });

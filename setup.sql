@@ -146,6 +146,13 @@ begin
   return query select m.id, m.name, m.role from members m where m.id = nid;
 end $$;
 
+-- リアルタイム配信対象（already member エラーは無視してよい）
+do $$ begin alter publication supabase_realtime add table members; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table crime_jobs; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table job_participants; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table expense_claims; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table pool_transactions; exception when duplicate_object then null; end $$;
+
 -- 既存メンバーの初期パスワード（未設定の人のみ、変更済みは上書きしない）
 insert into member_secrets(member_id, salt, password_hash)
 select id, s, md5(s || 'TEMP-PASS') from (select id, md5(gen_random_uuid()::text) as s from members) t

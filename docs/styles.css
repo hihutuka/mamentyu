@@ -227,7 +227,9 @@ a.tech-card:hover { transform: translateX(8px); box-shadow: -4px 4px 20px rgba(0
   .skill-matrix { grid-template-columns: repeat(2, 1fr); }
   .form-row.c2, .form-row.c3 { grid-template-columns: 1fr; }
   .tech-section .sec-num { position: static; margin-bottom: 8px; }
-  .hex-row { flex-direction: column; gap: 12px; }
-  .hex-row::before { display: none; }
+  .hex-row { gap: 4px; }
+  .hex-row::before { left: 5%; right: 5%; }
+  .hex { width: 38px; height: 38px; font-size: 16px; }
+  .hex-step .hex-label { font-size: 10px; }
   main { padding: 24px 16px 64px; }
 }
