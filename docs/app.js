@@ -78,6 +78,12 @@ async function ensureMember(name) {
   return m;
 }
 function crimeName(id) { const t = CRIME_TYPES.find(x => x.id === Number(id)); return t ? `${t.category} ${t.name}` : "-"; }
+function memberSelectHTML(field, placeholder) {
+  const act = CACHE.members.filter(m => m.is_active !== false);
+  if (!act.length) return `<input name="${field}" placeholder="${placeholder}" />`;
+  return `<select name="${field}">${act.map(m => `<option value="${esc(m.name)}">${esc(m.name)}（${esc(m.role)}）</option>`).join("")}</select>
+  <input name="new${field}" placeholder="新規の場合は入力" style="margin-top:8px;" />`;
+}
 function statusBadge(s) {
   const cls = s === "完了" || s === "補填済み" ? "b-done" : s === "精算中" || s === "申請中" ? "b-progress" : "b-open";
   return `<span class="badge ${cls}">${esc(s)}</span>`;
@@ -113,8 +119,9 @@ window.createJob = async (e) => {
 };
 window.joinJob = async (jobId, e) => {
   e.preventDefault();
-  const name = new FormData(e.target).get("name").trim();
-  if (!name) return alert("名前を入力");
+  const fd0 = new FormData(e.target);
+  const name = ((fd0.get("newname") || "").trim() || (fd0.get("name") || "").trim());
+  if (!name) return alert("名前を選択または入力");
   const m = await ensureMember(name);
   if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
@@ -133,8 +140,8 @@ window.joinJob = async (jobId, e) => {
 window.submitClaim = async (jobId, e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const name = (fd.get("name") || "").trim();
-  if (!name) return alert("名前を入力");
+  const name = ((fd.get("newname") || "").trim() || (fd.get("name") || "").trim());
+  if (!name) return alert("名前を選択または入力");
   const cur = CACHE.claims.find(c => String(c.job_id) === String(jobId) && c.member_name === name);
   if (cur && cur.status === "補填済み" && !isBoss()) return alert("補填済みのため編集不可（ボスに連絡）");
   const jobSt = CACHE.jobs.find(x => String(x.id) === String(jobId));
@@ -536,11 +543,11 @@ function viewJobDetail(id) {
   <section class="tech-section"><span class="sec-num">02</span><h2>Join / Claim</h2>
   <div class="form-row c2">
     <div class="data-panel"><span class="panel-label">Join</span>
-      <form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label><input name="name" placeholder="参加する名前" /></div>
+      <form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label>${memberSelectHTML("name", "参加する名前")}</div>
       <div style="margin-top:12px;"><button class="btn-primary">参加</button></div></form></div>
     <div class="data-panel"><span class="panel-label">Claim</span>
       <form onsubmit="submitClaim('${j.id}',event)" class="tech-form">
-        <div class="field"><label>自分の名前</label><input name="name" placeholder="自分の名前" /></div>
+        <div class="field"><label>自分の名前</label>${memberSelectHTML("name", "自分の名前")}</div>
         <div class="form-row c3" style="margin-top:12px;">
           <div class="field"><label>罰金</label><input name="fine_amount" type="number" min="0" value="0" /></div>
           <div class="field"><label>個人医代</label><input name="medic_cost" type="number" min="0" value="0" /></div>
