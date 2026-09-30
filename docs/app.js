@@ -15,7 +15,8 @@ const loadLS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); 
 const saveLS = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 const uid = () => Math.random().toString(36).slice(2, 10);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const isBoss = () => sessionStorage.getItem(LS.boss) === "1";
+function currentUser() { try { return JSON.parse(localStorage.getItem("gang_user")); } catch { return null; } }
+const isBoss = () => sessionStorage.getItem(LS.boss) === "1" || ["boss", "underboss"].includes((currentUser() || {}).role);
 const yen = (n) => (Number(n) || 0).toLocaleString("ja-JP") + "円";
 const claimTotal = (c) => (Number(c.fine_amount) || 0) + (c.medic_used ? (Number(c.medic_cost) || 0) : 0) + (Number(c.other_cost) || 0);
 let crimeFilter = 0;
@@ -191,7 +192,9 @@ async function markPaidRemote(c) {
   const exists = await sb().from("pool_transactions").select("id").eq("claim_id", c.id).limit(1);
   if (!exists.error && exists.data.length === 0) {
     const boss = CACHE.members.find(x => x.role === "boss" || x.role === "underboss");
-    await sb().from("pool_transactions").insert({ type: "出金", amount: claimTotal(c), claim_id: c.id, job_id: c.job_id, handled_by: boss ? boss.id : null, memo: c.member_name + " 補填" });
+    const me = currentUser();
+    const handler = (me && (me.role === "boss" || me.role === "underboss")) ? me.id : (boss ? boss.id : null);
+    await sb().from("pool_transactions").insert({ type: "出金", amount: claimTotal(c), claim_id: c.id, job_id: c.job_id, handled_by: handler, memo: c.member_name + " 補填" });
   }
   const rest = await sb().from("expense_claims").select("status").eq("job_id", c.job_id);
   if (!rest.error && rest.data.length && rest.data.every(x => x.status === "補填済み")) {
@@ -230,6 +233,8 @@ window.markAllPaid = async (jobId) => {
   if (!isBoss()) return alert("ボス-loginが必要");
   const targets = CACHE.claims.filter(c => String(c.job_id) === String(jobId) && c.status !== "補填済み");
   const need = targets.reduce((s, c) => s + claimTotal(c), 0);
+  const meAll = currentUser();
+  const handlerAll = (meAll && (meAll.role === "boss" || meAll.role === "underboss")) ? meAll.id : null;
   if (need > 0 && poolBalance() < need && !confirm(`プール残高${yen(poolBalance())}に対し${yen(need)}必要です。残高不足ですが続行しますか？`)) return;
   if (MODE === "remote") {
     const r = await sb().from("expense_claims").update({ status: "補填済み" }).eq("job_id", jobId);
@@ -239,7 +244,7 @@ window.markAllPaid = async (jobId) => {
     for (const c of claims) {
       const exists = await sb().from("pool_transactions").select("id").eq("claim_id", c.id).limit(1);
       if (!exists.error && exists.data.length === 0) {
-        await sb().from("pool_transactions").insert({ type: "出金", amount: claimTotal(c), claim_id: c.id, job_id: jobId, handled_by: null, memo: c.member_name + " 一括補填" });
+        await sb().from("pool_transactions").insert({ type: "出金", amount: claimTotal(c), claim_id: c.id, job_id: jobId, handled_by: handlerAll, memo: c.member_name + " 一括補填" });
       }
     }
     await pullRemote();
@@ -420,7 +425,7 @@ let jobSearch = "", statusFilter = "";
 window.setJobSearch = (e) => { e.preventDefault(); jobSearch = (new FormData(e.target).get("q") || "").trim(); render(); };
 window.clearJobSearch = () => { jobSearch = ""; statusFilter = ""; crimeFilter = 0; render(); };
 window.setStatusFilter = (v) => { statusFilter = v; render(); };
-function viewerName() { return localStorage.getItem("gang_viewer") || ""; }
+function viewerName() { const u = currentUser(); if (u && u.name) return u.name; return localStorage.getItem("gang_viewer") || ""; }
 function viewerRole() {
   const n = viewerName();
   if (!n) return "anon";
@@ -436,6 +441,52 @@ function canViewJob(j) {
   return !!n && (j.participants.includes(n) || CACHE.claims.some(c => String(c.job_id) === String(j.id) && c.member_name === n));
 }
 window.setViewer = (v) => { if (v) localStorage.setItem("gang_viewer", v); else localStorage.removeItem("gang_viewer"); render(); };
+window.loginUser = async (e) => {
+  e.preventDefault();
+  if (MODE !== "remote") return alert("共有DBに接続できていないためログインできません");
+  const fd = new FormData(e.target);
+  const r = await sb().rpc("verify_member", { p_name: fd.get("username"), p_password: fd.get("password") || "" });
+  if (r.error) return alert("ログイン失敗: " + r.error.message);
+  if (!r.data || !r.data.length) return alert("名前かパスワードが違います");
+  localStorage.setItem("gang_user", JSON.stringify(r.data[0]));
+  document.getElementById("loginModal").classList.add("hidden");
+  render();
+};
+window.logoutUser = async () => {
+  if (await confirmYesNo("ログアウトしますか？")) {
+    localStorage.removeItem("gang_user");
+    sessionStorage.removeItem(LS.boss);
+    document.getElementById("loginModal").classList.add("hidden");
+    render();
+  }
+};
+window.changePassword = async (e) => {
+  e.preventDefault();
+  const u = currentUser();
+  if (!u) return alert("ログインしてください");
+  if (MODE !== "remote") return alert("共有DBに接続できていないため変更できません");
+  const fd = new FormData(e.target);
+  const newPw = (fd.get("newpw") || "").trim();
+  if (newPw.length < 4) return alert("新しいパスワードは4文字以上にしてください");
+  const r = await sb().rpc("change_own_password", { p_member_id: u.id, p_old_password: (fd.get("oldpw") || "").trim(), p_new_password: newPw });
+  if (r.error) return alert("変更失敗: " + r.error.message);
+  alert("変更しました");
+  render();
+};
+function myPanel() {
+  const u = currentUser();
+  if (!u) return "";
+  const mine = CACHE.claims.filter(c => c.member_name === u.name);
+  const unpaid = mine.filter(c => c.status !== "補填済み");
+  const joined = CACHE.jobs.filter(j => j.participants.includes(u.name));
+  return `<div class="data-panel" style="margin-bottom:12px;"><span class="panel-label">My — ${esc(u.name)}</span>
+  <div class="big-num">${yen(unpaid.reduce((s, c) => s + claimTotal(c), 0))}</div>
+  <div class="sub">あなたの補填待ち（${unpaid.length}件）／ 申告${mine.length}件 ／ 参加${joined.length}枠</div>
+  <form onsubmit="changePassword(event)" class="tech-form" style="margin-top:12px;"><div class="form-row c2">
+    <div class="field"><label>今のパスワード</label><input name="oldpw" type="text" autocomplete="off" /></div>
+    <div class="field"><label>新しいパスワード</label><input name="newpw" type="text" autocomplete="off" /></div></div>
+  <div style="margin-top:8px;"><button class="btn-ghost">パスワード変更</button></div></form></div>`;
+}
 window.setCrimeFilter = (id) => { crimeFilter = crimeFilter === id ? 0 : id; render(); };
 window.exportJSON = () => {
   const a = document.createElement("a");
@@ -516,7 +567,7 @@ function targetMatrix() {
 function viewJobs() {
   const q = jobSearch;
   const jobs = CACHE.jobs.filter(j => (!crimeFilter || Number(j.crime_type_id) === crimeFilter) && (!statusFilter || j.status === statusFilter) && (!q || (crimeName(j.crime_type_id) + " " + (j.location || "") + " " + (j.memo || "")).includes(q)) && canViewJob(j));
-  return `<section class="tech-section"><span class="sec-num">01</span><h2>Targets</h2>${targetMatrix()}</section>
+  return `${myPanel()}<section class="tech-section"><span class="sec-num">01</span><h2>Targets</h2>${targetMatrix()}</section>
   <section class="tech-section"><span class="sec-num">02</span><h2>Operations</h2>
   <div class="data-panel" style="margin-bottom:12px;"><span class="panel-label">You — あなた</span>
     <div class="field"><label>あなたの名前（無記名可）</label>
@@ -660,8 +711,11 @@ function render() {
 }
 window.addEventListener("hashchange", render);
 document.getElementById("loginBtn").onclick = async () => {
-  if (isBoss()) { if (await confirmYesNo("ログアウトしますか？")) { sessionStorage.removeItem(LS.boss); render(); } return; }
-  document.getElementById("logoutBtn").style.display = "none";
+  if (isBoss()) { await logoutUser(); return; }
+  const sel = document.getElementById("loginUserSel");
+  const cur = currentUser();
+  sel.innerHTML = CACHE.members.filter(m => m.is_active !== false).map(m => `<option value="${m.name}" ${cur && cur.name === m.name ? "selected" : ""}>${m.name}（${m.role}）</option>`).join("");
+  document.getElementById("logoutBtn").style.display = cur ? "" : "none";
   document.getElementById("loginModal").classList.remove("hidden");
 };
 document.getElementById("loginClose").onclick = () => document.getElementById("loginModal").classList.add("hidden");
@@ -671,6 +725,6 @@ window.doLogin = (e) => {
   if (v === window.AppConfig.BOSS_PASSCODE) { sessionStorage.setItem(LS.boss, "1"); document.getElementById("loginModal").classList.add("hidden"); document.getElementById("loginPass").value = ""; render(); }
   else alert("合言葉が違います");
 };
-document.getElementById("logoutBtn").onclick = async () => { if (await confirmYesNo("ログアウトしますか？")) { sessionStorage.removeItem(LS.boss); document.getElementById("loginModal").classList.add("hidden"); render(); } };
+document.getElementById("logoutBtn").onclick = () => { logoutUser(); };
 if (!location.hash) location.hash = "#/jobs";
 boot().then(render);
