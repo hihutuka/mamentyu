@@ -76,7 +76,7 @@ create table if not exists pool_transactions(
 ALTER TABLE expense_claims DROP CONSTRAINT IF EXISTS expense_claims_status_check;
 ALTER TABLE expense_claims ADD CONSTRAINT expense_claims_status_check CHECK (status in ('未申告','申請中','補填済み'));
 ALTER TABLE crime_jobs DROP CONSTRAINT IF EXISTS crime_jobs_status_check;
-ALTER TABLE crime_jobs ADD CONSTRAINT crime_jobs_status_check CHECK (status in ('受付中','精算中','完了'));
+ALTER TABLE crime_jobs ADD CONSTRAINT crime_jobs_status_check CHECK (status in ('参加募集中','精算中','補填完了'));
 ALTER TABLE pool_transactions DROP CONSTRAINT IF EXISTS pool_transactions_type_check;
 ALTER TABLE pool_transactions ADD CONSTRAINT pool_transactions_type_check CHECK (type in ('入金','出金'));
 ALTER TABLE members DROP CONSTRAINT IF EXISTS members_role_check;
