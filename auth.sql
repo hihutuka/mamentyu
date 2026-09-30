@@ -45,7 +45,7 @@ declare nid uuid;
 begin
   if p_name is null or btrim(p_name) = '' then raise exception 'empty name'; end if;
   if char_length(p_password) < 4 then raise exception 'short password'; end if;
-  perform 1 from members where name = btrim(p_name);
+  perform 1 from members where members.name = btrim(p_name);
   if found then raise exception 'name taken'; end if;
   insert into members(name, role) values (btrim(p_name), 'mercenary') returning members.id into nid;
   insert into member_secrets(member_id, password_hash) values (nid, crypt(p_password, gen_salt('bf')));
