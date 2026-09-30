@@ -2,8 +2,6 @@
 -- これ1つをSupabase SQL Editorに貼って実行すればOK（何度実行しても安全）
 -- 'TEMP-PASS' は初期パスワードに書き換えること
 
-create extension if not exists pgcrypto;
-
 create table if not exists members(
   id uuid primary key default gen_random_uuid(),
   name text unique not null,
@@ -100,9 +98,15 @@ drop policy if exists open_all on job_participants; create policy open_all on jo
 drop policy if exists open_all on expense_claims; create policy open_all on expense_claims for all to anon, authenticated using (true) with check (true);
 drop policy if exists open_all on pool_transactions; create policy open_all on pool_transactions for all to anon, authenticated using (true) with check (true);
 
--- ログイン基盤
-create table if not exists member_secrets(
+-- ログイン基盤（拡張不要：md5+salt方式、ハッシュは関数経由のみで照合）
+drop function if exists verify_member(text, text);
+drop function if exists change_own_password(uuid, text, text);
+drop function if exists signup_member(text, text);
+drop table if exists member_secrets;
+
+create table member_secrets(
   member_id uuid primary key references members(id) on delete cascade,
+  salt text not null,
   password_hash text not null,
   updated_at timestamptz default now()
 );
@@ -113,36 +117,36 @@ language sql security definer set search_path = public as $$
   select m.id, m.name, m.role from members m
   join member_secrets s on s.member_id = m.id
   where m.name = p_name and m.is_active is distinct from false
-    and s.password_hash = crypt(p_password, s.password_hash);
+    and s.password_hash = md5(s.salt || p_password);
 $$;
 
 create or replace function change_own_password(p_member_id uuid, p_old_password text, p_new_password text)
 returns boolean language plpgsql security definer set search_path = public as $$
+declare nsalt text := md5(gen_random_uuid()::text);
 begin
   perform 1 from member_secrets
-  where member_id = p_member_id and password_hash = crypt(p_old_password, password_hash);
+  where member_id = p_member_id and password_hash = md5(salt || p_old_password);
   if not found then raise exception 'old password mismatch'; end if;
-  insert into member_secrets(member_id, password_hash)
-  values (p_member_id, crypt(p_new_password, gen_salt('bf')))
-  on conflict (member_id) do update set password_hash = excluded.password_hash, updated_at = now();
+  update member_secrets set salt = nsalt, password_hash = md5(nsalt || p_new_password), updated_at = now()
+  where member_id = p_member_id;
   return true;
 end $$;
 
 create or replace function signup_member(p_name text, p_password text)
 returns table(id uuid, name text, role text)
 language plpgsql security definer set search_path = public as $$
-declare nid uuid;
+declare nid uuid; nsalt text := md5(gen_random_uuid()::text);
 begin
   if p_name is null or btrim(p_name) = '' then raise exception 'empty name'; end if;
   if char_length(p_password) < 4 then raise exception 'short password'; end if;
   perform 1 from members where members.name = btrim(p_name);
   if found then raise exception 'name taken'; end if;
   insert into members(name, role) values (btrim(p_name), 'mercenary') returning members.id into nid;
-  insert into member_secrets(member_id, password_hash) values (nid, crypt(p_password, gen_salt('bf')));
+  insert into member_secrets(member_id, salt, password_hash) values (nid, nsalt, md5(nsalt || p_password));
   return query select m.id, m.name, m.role from members m where m.id = nid;
 end $$;
 
 -- 既存メンバーの初期パスワード（未設定の人のみ、変更済みは上書きしない）
-insert into member_secrets(member_id, password_hash)
-select id, crypt('TEMP-PASS', gen_salt('bf')) from members
+insert into member_secrets(member_id, salt, password_hash)
+select id, s, md5(s || 'TEMP-PASS') from (select id, md5(gen_random_uuid()::text) as s from members) t
 on conflict (member_id) do nothing;
