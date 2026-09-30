@@ -85,7 +85,9 @@ function statusBadge(s) {
 function setChrome(route) {
   document.getElementById("modeBadge").textContent =
     (MODE === "remote" ? "SUPABASE // SHARED" : "SUPABASE // LOCAL") + " / " + (isBoss() ? "LOGIN:IN" : "LOGIN:OUT");
-  document.getElementById("poolBadge").innerHTML = isBoss() ? `POOL <b>${yen(poolBalance())}</b>` : `POOL ***`;
+  const poolEl = document.getElementById("poolBadge");
+  if (isBoss()) { poolEl.style.display = ""; poolEl.innerHTML = `POOL <b>${yen(poolBalance())}</b>`; }
+  else { poolEl.style.display = "none"; }
   const btn = document.getElementById("loginBtn");
   btn.textContent = isBoss() ? "IN" : "LOGIN";
   btn.classList.toggle("on", isBoss());
@@ -557,6 +559,8 @@ function viewJobDetail(id) {
     <td>${c.status !== "補填済み" && isBoss() ? `<button onclick="markPaid('${c.id}')" class="btn-accent" style="padding:6px 12px;font-size:12px;">補填済み</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="6">申告なし</td></tr>'}</table></section>`;
 }
 function viewPool() {
+  if (!isBoss()) return `<section class="tech-section"><span class="sec-num">01</span><h2>Pool</h2>
+  <div class="lock-note">プールを開くにはログインが必要です。右上からログインしてください。</div></section>`;
   const txs = CACHE.pool.slice().reverse();
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Pool</h2>
   <div class="data-panel"><span class="panel-label">Balance</span><div class="big-num">${isBoss() ? yen(poolBalance()) : "***"}</div><div class="sub">プール残高</div></div>
@@ -602,7 +606,8 @@ function render() {
 window.addEventListener("hashchange", render);
 document.getElementById("loginBtn").onclick = () => document.getElementById("loginModal").classList.remove("hidden");
 document.getElementById("loginClose").onclick = () => document.getElementById("loginModal").classList.add("hidden");
-document.getElementById("loginGo").onclick = () => {
+window.doLogin = (e) => {
+  if (e) e.preventDefault();
   const v = document.getElementById("loginPass").value;
   if (v === window.AppConfig.BOSS_PASSCODE) { sessionStorage.setItem(LS.boss, "1"); document.getElementById("loginModal").classList.add("hidden"); document.getElementById("loginPass").value = ""; render(); }
   else alert("合言葉が違います");

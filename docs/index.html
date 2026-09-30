@@ -36,11 +36,13 @@
 <span class="panel-label">Boss Auth</span>
 <h2 style="margin-top:8px;">ボス / アンダーボス ログイン</h2>
 <p class="sub" style="font-size:13px;color:var(--tech-gray);">一般参加はログイン不要です。補填完了・プール入出金・ダッシュボード閲覧にはloginが必要です。</p>
-<input id="loginPass" type="password" placeholder="合言葉" />
+<form onsubmit="doLogin(event)" class="tech-form">
+<input id="loginPass" type="text" autocomplete="off" autocapitalize="off" placeholder="合言葉" />
 <div style="display:flex;gap:8px;margin-top:12px;">
-<button id="loginGo" class="btn-primary" style="width:auto;flex:1;">ログイン</button>
-<button id="loginClose" class="btn-ghost" style="flex:1;">閉じる</button>
+<button class="btn-primary" style="width:auto;flex:1;">ログイン</button>
+<button type="button" id="loginClose" class="btn-ghost" style="flex:1;">閉じる</button>
 </div>
+</form>
 <button id="logoutBtn" style="background:none;border:none;text-decoration:underline;font-size:12px;color:var(--tech-gray);margin-top:8px;cursor:pointer;">ログアウト</button>
 </div>
 </div>
