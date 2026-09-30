@@ -35,7 +35,8 @@
 - [ ] 月次締めレポート
 
 ## 4. 技術構成
-- Frontend: ビルド不要。`index.html` + `app.js` + `supabaseClient.js`、Tailwind CDN、Supabase JS v2 CDN
+- Frontend: ビルド不要。`index.html` + `styles.css` + `app.js` + `supabaseClient.js`、Supabase JS v2 CDN
+  - デザイン: Tech Editorialテンプレート採用（運用ダッシュボード向け。Literaryはポートフォリオ向けのため不採用）
 - Backend: Supabase Postgres + Auth + RLS + Realtime
 - Hosting: GitHub Pages（`main`ブランチ `/docs` または `gh-pages`）
 - ルーティング: ハッシュSPA `#/dashboard` `#/jobs` `#/jobs/:id` `#/pool` `#/members`
@@ -106,8 +107,9 @@ insert into crime_types(category, name, capacity) values
 - [x] crime_types初期データ確定（7件確定、上記マスタ）
 - [x] schema.sql作成（適用待ち）
 - [x] docs試作版作成（index.html/app.js/supabaseClient.js、ローカル動作可、ボス混在認証）
-- [ ] Supabaseキー埋め込み + RLS適用（キー待ち）
-- [ ] supabaseClient.js + Auth本番化（合言葉変更待ち）
+- [x] Supabaseキー埋め込み + RLS適用（キー埋め込み済み、SQL適用は手動要）
+- [x] supabaseClient.js + Auth本番化（合言葉「豆人あずき」設定済み、Supabase Auth本格化はTODO）
+- [ ] git commit済み（ローカル）→ push + Pages有効化（認証待ち）
 - [ ] supabaseClient.js + Auth（合言葉方式か個別アカウントか決定）
 - [ ] index.html骨格 + 4タブSPA
 - [ ] 枠作成・参加・申告・補填のCRUD接続
