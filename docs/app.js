@@ -31,7 +31,7 @@ function persistLocal() {
 }
 async function pullRemote() {
   const [m, j, p, c, t] = await Promise.all([
-    sb().from("members").select("id,name,role"),
+    sb().from("members").select("id,name,role,is_active"),
     sb().from("crime_jobs").select("id,crime_type_id,occurred_at,location,memo,status,created_at").order("created_at", { ascending: false }),
     sb().from("job_participants").select("job_id,member_id"),
     sb().from("expense_claims").select("id,job_id,member_id,fine_amount,medic_used,medic_cost,other_cost,status,note,updated_at"),
@@ -60,9 +60,9 @@ async function ensureMember(name) {
   let m = CACHE.members.find(x => x.name === name);
   if (m) return m;
   if (MODE === "remote") {
-    const r = await sb().from("members").upsert({ name, role: "member" }, { onConflict: "name" }).select("id,name,role");
+    const r = await sb().from("members").upsert({ name }, { onConflict: "name" }).select("id,name,role,is_active");
     if (r.error) throw r.error;
-    m = r.data[0] || (await sb().from("members").select("id,name,role").eq("name", name).single()).data;
+    m = r.data[0] || (await sb().from("members").select("id,name,role,is_active").eq("name", name).single()).data;
   } else {
     m = { id: uid(), name, role: "member", is_active: true };
   }
@@ -106,6 +106,7 @@ window.joinJob = async (jobId, e) => {
   const name = new FormData(e.target).get("name").trim();
   if (!name) return alert("名前を入力");
   const m = await ensureMember(name);
+  if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
   if (!j) return;
   if (MODE === "remote") {
@@ -126,6 +127,7 @@ window.submitClaim = async (jobId, e) => {
   const cur = CACHE.claims.find(c => String(c.job_id) === String(jobId) && c.member_name === name);
   if (cur && cur.status === "補填済み" && !isBoss()) return alert("補填済みのため編集不可（ボスに連絡）");
   const m = await ensureMember(name);
+  if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const medic_used = fd.get("medic_used") === "on";
   const row = { job_id: jobId, member_id: m.id, fine_amount: Number(fd.get("fine_amount")) || 0, medic_used, medic_cost: medic_used ? (Number(fd.get("medic_cost")) || 0) : 0, other_cost: Number(fd.get("other_cost")) || 0, status: "申請中", note: fd.get("note") || "" };
   if (MODE === "remote") {
@@ -236,7 +238,7 @@ window.addMember = async (e) => {
   if (!name) return;
   const role = fd.get("role");
   if (MODE === "remote") {
-    const r = await sb().from("members").upsert({ name, role }, { onConflict: "name" }).select("id,name,role");
+    const r = await sb().from("members").upsert({ name, role }, { onConflict: "name" }).select("id,name,role,is_active");
     if (r.error) return alert("追加失敗: " + r.error.message);
     await pullRemote();
   } else {
