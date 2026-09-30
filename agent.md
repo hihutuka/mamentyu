@@ -112,8 +112,8 @@ insert into crime_types(category, name, capacity) values
 - [x] Supabaseキー・合言葉埋め込み
 - [x] push + Pages公開（表示確認済み）
 ### 残り（優先度順）
-- [ ] schema.sql適用確認（Supabase側で実行済みか）
-- [ ] Supabase実接続（現状localStorageのみ、共有不可）
+- [x] schema.sql適用確認（7件取得OK、Table Editorでも確認済み）
+- [x] Supabase実接続（共有DB化、失敗時は端末保存に自動切替・要動作確認）
 - [ ] RLS本番厳格化 + Supabase Auth化（現状は合言葉のみ）
 - [ ] 欠け機能：枠編集・削除、参加離脱、残高不足警告、メンバー別/月別集計、CSV出力、メンバー無効化・役職変更
 - [ ] Phase2：Discord通知、証拠画像、月次レポート
