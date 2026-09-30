@@ -22,6 +22,13 @@ let crimeFilter = 0;
 let MODE = "local";
 let CACHE = { members: [], jobs: [], claims: [], pool: [] };
 
+async function notifyDiscord(text) {
+  const url = localStorage.getItem("gang_webhook") || window.AppConfig.DISCORD_WEBHOOK_URL;
+  if (!url) return;
+  try { await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: text }) }); }
+  catch (e) { console.warn("discord notify failed", e); }
+}
+
 // ---------- store ----------
 function loadLocal() {
   CACHE = { members: loadLS(LS.members, []), jobs: loadLS(LS.jobs, []), claims: loadLS(LS.claims, []), pool: loadLS(LS.pool, []) };
@@ -99,6 +106,7 @@ window.createJob = async (e) => {
     persistLocal();
   }
   location.hash = "#/jobs";
+  notifyDiscord(`【枠作成】${crimeName(row.crime_type_id)} / ${(row.occurred_at || "").slice(0, 16)}${row.location ? " / " + row.location : ""}${row.memo ? " / " + row.memo : ""}`);
   render();
 };
 window.joinJob = async (jobId, e) => {
@@ -147,6 +155,8 @@ window.submitClaim = async (jobId, e) => {
     if (j && !j.participants.includes(name)) j.participants.push(name);
     persistLocal();
   }
+  const sj = CACHE.jobs.find(x => String(x.id) === String(jobId));
+  notifyDiscord(`【申告】${sj ? crimeName(sj.crime_type_id) : ""} / ${name} / 合計${yen(claimTotal(row))}（罰金${yen(row.fine_amount)} 個人医${row.medic_used ? yen(row.medic_cost) : "なし"} 他${yen(row.other_cost)}）`);
   render();
 };
 async function markPaidRemote(c) {
@@ -186,6 +196,8 @@ window.markPaid = async (claimId) => {
     }
     persistLocal();
   }
+  const pj = CACHE.jobs.find(x => String(x.id) === String(c.job_id));
+  notifyDiscord(`【補填済み】${pj ? crimeName(pj.crime_type_id) : ""} / ${c.member_name} / ${yen(need)}`);
   render();
 };
 window.markAllPaid = async (jobId) => {
@@ -212,6 +224,8 @@ window.markAllPaid = async (jobId) => {
     CACHE.claims.filter(c => String(c.job_id) === String(jobId) && !CACHE.pool.some(t => t.claim_id === c.id)).forEach(c => CACHE.pool.push({ id: uid(), type: "出金", amount: claimTotal(c), claim_id: c.id, job_id: jobId, handled_by: "boss", memo: c.member_name + " 一括補填", created_at: new Date().toISOString() }));
     persistLocal();
   }
+  const aj = CACHE.jobs.find(x => String(x.id) === String(jobId));
+  if (need > 0) notifyDiscord(`【一括補填】${aj ? crimeName(aj.crime_type_id) : ""} / ${targets.length}件 / 合計${yen(need)}`);
   render();
 };
 window.addPool = async (e) => {
@@ -335,6 +349,14 @@ window.exportCSV = (kind) => {
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   a.download = kind === "claims" ? "claims.csv" : "pool.csv"; a.click();
 };
+window.saveWebhook = (e) => {
+  e.preventDefault();
+  if (!isBoss()) return alert("ボス-loginが必要");
+  const v = (new FormData(e.target).get("url") || "").trim();
+  if (v) localStorage.setItem("gang_webhook", v); else localStorage.removeItem("gang_webhook");
+  alert("保存しました（この端末のみ有効）");
+  render();
+};
 window.setCrimeFilter = (id) => { crimeFilter = crimeFilter === id ? 0 : id; render(); };
 window.exportJSON = () => {
   const a = document.createElement("a");
@@ -384,7 +406,12 @@ function viewDashboard() {
   <section class="tech-section"><span class="sec-num">04</span><h2>Monthly Out</h2>
   <table class="tech-table"><tr><th>月</th><th>出金合計</th></tr>
   ${months.map(m => `<tr><td>${esc(m.month)}</td><td><b>${yen(m.total)}</b></td></tr>`).join("") || '<tr><td colspan="2">なし</td></tr>'}</table>
-  <div style="margin-top:12px;display:flex;gap:8px;"><button onclick="exportCSV('claims')" class="btn-ghost">申告CSV</button><button onclick="exportCSV('pool')" class="btn-ghost">台帳CSV</button></div></section>`;
+  <div style="margin-top:12px;display:flex;gap:8px;"><button onclick="exportCSV('claims')" class="btn-ghost">申告CSV</button><button onclick="exportCSV('pool')" class="btn-ghost">台帳CSV</button></div></section>
+  <section class="tech-section"><span class="sec-num">05</span><h2>Notify</h2>
+  <div class="data-panel"><span class="panel-label">Discord Webhook</span>
+    <div class="sub" style="margin-bottom:12px;">現在: ${esc(((localStorage.getItem("gang_webhook") || window.AppConfig.DISCORD_WEBHOOK_URL || "未設定")).slice(0, 60))}...</div>
+    <form onsubmit="saveWebhook(event)" class="tech-form"><div class="field"><label>URL（空で既定に戻す、この端末のみ）</label><input name="url" placeholder="https://discord.com/api/webhooks/..." /></div>
+    <div style="margin-top:12px;"><button class="btn-primary">保存</button></div></form></div></section>`;
 }
 function jobCard(j, i) {
   const claims = CACHE.claims.filter(c => String(c.job_id) === String(j.id));
