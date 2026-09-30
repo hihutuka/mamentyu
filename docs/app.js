@@ -17,7 +17,12 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function currentUser() { try { return JSON.parse(localStorage.getItem("gang_user")); } catch { return null; } }
 const isBoss = () => ["boss", "underboss"].includes((currentUser() || {}).role);
-const yen = (n) => (Number(n) || 0).toLocaleString("ja-JP") + "円";
+const man = (n) => {
+  n = Math.round(Number(n) || 0);
+  if (!n) return "0万";
+  const oku = Math.floor(n / 10000), rest = n % 10000;
+  return (oku ? oku + "億" : "") + (rest ? rest + "万" : "");
+};
 const claimTotal = (c) => (Number(c.fine_amount) || 0) + (c.medic_used ? (Number(c.medic_cost) || 0) : 0) + (Number(c.other_cost) || 0);
 let crimeFilter = 0;
 let MODE = "local";
@@ -107,12 +112,13 @@ function setChrome(route) {
   document.getElementById("modeBadge").textContent =
     (MODE === "remote" ? "SUPABASE // SHARED" : "SUPABASE // LOCAL") + " / " + (isBoss() ? "LOGIN中" : "未ログイン");
   const poolEl = document.getElementById("poolBadge");
-  if (isBoss()) { poolEl.style.display = ""; poolEl.innerHTML = `POOL <b>${yen(poolBalance())}</b>`; }
+  if (isBoss()) { poolEl.style.display = ""; poolEl.innerHTML = `POOL <b>${man(poolBalance())}</b>`; }
   else { poolEl.style.display = "none"; }
   const btn = document.getElementById("loginBtn");
   btn.textContent = isBoss() ? "login中" : "LOGIN";
   btn.classList.toggle("on", isBoss());
   document.querySelectorAll("[data-nav]").forEach(a => a.classList.toggle("active", a.dataset.nav === route));
+  document.getElementById("bossNav").style.display = isBoss() ? "" : "none";
 }
 
 // ---------- actions ----------
@@ -183,7 +189,7 @@ window.submitClaim = async (jobId, e) => {
     persistLocal();
   }
   const sj = CACHE.jobs.find(x => String(x.id) === String(jobId));
-  notifyDiscord(`【申告】${sj ? crimeName(sj.crime_type_id) : ""} / ${name} / 合計${yen(claimTotal(row))}（罰金${yen(row.fine_amount)} 個人医${row.medic_used ? yen(row.medic_cost) : "なし"} 他${yen(row.other_cost)}）`);
+  notifyDiscord(`【申告】${sj ? crimeName(sj.crime_type_id) : ""} / ${name} / 合計${man(claimTotal(row))}（罰金${man(row.fine_amount)} 個人医${row.medic_used ? man(row.medic_cost) : "なし"} 他${man(row.other_cost)}）`);
   render();
 };
 async function markPaidRemote(c) {
@@ -209,7 +215,7 @@ window.markPaid = async (claimId) => {
   const c = CACHE.claims.find(x => String(x.id) === String(claimId));
   if (!c) return;
   const need = claimTotal(c);
-  if (poolBalance() < need && !confirm(`プール残高${yen(poolBalance())}に対し${yen(need)}必要です。残高不足ですが続行しますか？`)) return;
+  if (poolBalance() < need && !confirm(`プール残高${man(poolBalance())}に対し${man(need)}必要です。残高不足ですが続行しますか？`)) return;
   if (MODE === "remote") { await markPaidRemote(c); }
   else {
     c.status = "補填済み"; c.updated_at = new Date().toISOString();
@@ -225,7 +231,7 @@ window.markPaid = async (claimId) => {
     persistLocal();
   }
   const pj = CACHE.jobs.find(x => String(x.id) === String(c.job_id));
-  notifyDiscord(`【補填済み】${pj ? crimeName(pj.crime_type_id) : ""} / ${c.member_name} / ${yen(need)}`);
+  notifyDiscord(`【補填済み】${pj ? crimeName(pj.crime_type_id) : ""} / ${c.member_name} / ${man(need)}`);
   render();
 };
 window.markAllPaid = async (jobId) => {
@@ -234,7 +240,7 @@ window.markAllPaid = async (jobId) => {
   const need = targets.reduce((s, c) => s + claimTotal(c), 0);
   const meAll = currentUser();
   const handlerAll = (meAll && (meAll.role === "boss" || meAll.role === "underboss")) ? meAll.id : null;
-  if (need > 0 && poolBalance() < need && !confirm(`プール残高${yen(poolBalance())}に対し${yen(need)}必要です。残高不足ですが続行しますか？`)) return;
+  if (need > 0 && poolBalance() < need && !confirm(`プール残高${man(poolBalance())}に対し${man(need)}必要です。残高不足ですが続行しますか？`)) return;
   if (MODE === "remote") {
     const r = await sb().from("expense_claims").update({ status: "補填済み" }).eq("job_id", jobId);
     if (r.error) return alert("更新失敗: " + r.error.message);
@@ -255,7 +261,7 @@ window.markAllPaid = async (jobId) => {
     persistLocal();
   }
   const aj = CACHE.jobs.find(x => String(x.id) === String(jobId));
-  if (need > 0) notifyDiscord(`【一括補填】${aj ? crimeName(aj.crime_type_id) : ""} / ${targets.length}件 / 合計${yen(need)}`);
+  if (need > 0) notifyDiscord(`【一括補填】${aj ? crimeName(aj.crime_type_id) : ""} / ${targets.length}件 / 合計${man(need)}`);
   render();
 };
 window.addPool = async (e) => {
@@ -507,7 +513,7 @@ function myPanel() {
   const unpaid = mine.filter(c => c.status !== "補填済み");
   const joined = CACHE.jobs.filter(j => j.participants.includes(u.name));
   return `<div class="data-panel" style="margin-bottom:12px;"><span class="panel-label">My — ${esc(u.name)}</span>
-  <div class="big-num">${yen(unpaid.reduce((s, c) => s + claimTotal(c), 0))}</div>
+  <div class="big-num">${man(unpaid.reduce((s, c) => s + claimTotal(c), 0))}</div>
   <div class="sub">あなたの補填待ち（${unpaid.length}件）／ 申告${mine.length}件 ／ 参加${joined.length}枠</div>
   <form onsubmit="changePassword(event)" class="tech-form" style="margin-top:12px;"><div class="form-row c2">
     <div class="field"><label>今のパスワード</label><input name="oldpw" type="text" autocomplete="off" /></div>
@@ -590,14 +596,18 @@ function monthAgg() {
   });
   return Object.keys(map).sort().reverse().slice(0, 6).map(k => ({ month: k, total: map[k] }));
 }
-let bossMenuOpen = false;
-window.toggleBossMenu = () => { bossMenuOpen = !bossMenuOpen; render(); };
+let showAllJoining = false;
+window.toggleJoining = () => { showAllJoining = !showAllJoining; render(); };
 function viewDashboard() {
   if (!currentUser()) return `<section class="tech-section"><span class="sec-num">01</span><h2>Dashboard</h2>
     <div class="lock-note">ダッシュボードを開くにはログインが必要です。右上からログインしてください。参加登録、補填は「Operations」から可能です。</div></section>`;
-  if (!isBoss()) return recruitSection() + joiningSection() + myPanel();
-  return myPanel() + `<div style="text-align:right;margin-bottom:12px;"><button onclick="toggleBossMenu()" class="btn-ghost">ボスメニュー ${bossMenuOpen ? "▲" : "▼"}</button></div>`
-    + (bossMenuOpen ? bossFull() : `<p class="sub">管理情報はボスメニューから開きます</p>`);
+  return recruitSection() + joiningSection() + myPanel()
+    + (isBoss() ? `<div style="text-align:right;margin-bottom:12px;"><a href="#/boss" class="btn-ghost" style="text-decoration:none;display:inline-block;">ボスメニュー</a></div>` : "");
+}
+function viewBoss() {
+  if (!isBoss()) return `<section class="tech-section"><span class="sec-num">01</span><h2>Boss</h2>
+    <div class="lock-note">ボスメニューはボス/アンダーボスのみです。</div></section>`;
+  return bossFull();
 }
 function recruitSection() {
   const open = CACHE.jobs.filter(j => j.status === "参加募集中" && canViewJob(j));
@@ -607,15 +617,17 @@ function recruitSection() {
 function joiningSection() {
   const me = currentUser();
   const list = me ? CACHE.jobs.filter(j => j.status !== "補填完了" && j.participants.includes(me.name)) : [];
+  const shown = showAllJoining ? list : list.slice(0, 3);
   return `<section class="tech-section"><span class="sec-num">02</span><h2>Joining</h2>
-  <div class="grid grid-3">${list.map((j, i) => {
+  <div class="grid grid-3">${shown.map((j, i) => {
     const c = CACHE.claims.find(x => String(x.job_id) === String(j.id) && x.member_name === me.name);
     return `<a href="#/jobs/${j.id}" class="tech-card">
       <div class="card-top"><span class="diag-num">${String(i + 1).padStart(2, "0")}</span>${statusBadge(j.status)}</div>
       <div class="card-title">${esc(crimeName(j.crime_type_id))}</div>
-      <div class="card-meta">${esc((j.occurred_at || "").slice(0, 16))} / ${c ? (c.status === "補填済み" ? "補填済み " + yen(claimTotal(c)) : "申告済み " + yen(claimTotal(c))) : "未申告"}</div>
+      <div class="card-meta">${esc((j.occurred_at || "").slice(0, 16))} / ${c ? (c.status === "補填済み" ? "補填済み " + man(claimTotal(c)) : "申告済み・補填待ち " + man(claimTotal(c))) : "未申告"}</div>
     </a>`;
-  }).join("") || '<p class="sub">参加中の犯罪はありません</p>'}</div></section>`;
+  }).join("") || '<p class="sub">参加中の犯罪はありません</p>'}</div>
+  ${list.length > 3 ? `<div style="margin-top:12px;"><button onclick="toggleJoining()" class="btn-ghost">${showAllJoining ? "閉じる" : `すべて見る（${list.length}件）`}</button></div>` : ""}</section>`;
 }
 function recruitCard(j, i) {
   const me = currentUser();
@@ -634,23 +646,23 @@ function bossFull() {
   const monthSum = CACHE.pool.filter(t => t.type === "出金" && new Date(t.created_at).getMonth() === new Date().getMonth()).reduce((s, t) => s + t.amount, 0);
   const open = CACHE.jobs.filter(j => j.status !== "補填完了");
   const warn = unpaidSum > poolBalance()
-    ? `<div class="data-panel" style="border-color:var(--tech-accent);margin-bottom:24px;"><span class="panel-label" style="background:var(--tech-accent);">Warning</span>未補填${yen(unpaidSum)}がプール残高${yen(poolBalance())}を上回っています。上納を促してください。</div>` : "";
+    ? `<div class="data-panel" style="border-color:var(--tech-accent);margin-bottom:24px;"><span class="panel-label" style="background:var(--tech-accent);">Warning</span>未補填${man(unpaidSum)}がプール残高${man(poolBalance())}を上回っています。上納を促してください。</div>` : "";
   const members = memberAgg();
   const months = monthAgg();
   const remindRows = CACHE.jobs.filter(j => j.status !== "補填完了").map(j => ({ j, missing: j.participants.filter(p => !CACHE.claims.some(c => String(c.job_id) === String(j.id) && c.member_name === p)) })).filter(x => x.missing.length);
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Dashboard</h2>${warn}
   <div class="grid grid-3">
-    <div class="data-panel"><span class="panel-label">Pool Balance</span><div class="big-num">${yen(poolBalance())}</div><div class="sub">プール残高</div></div>
-    <div class="data-panel"><span class="panel-label">Unpaid</span><div class="big-num">${unpaid.length}件 / ${yen(unpaidSum)}</div><div class="sub">未補填の申告</div></div>
-    <div class="data-panel"><span class="panel-label">Monthly Out</span><div class="big-num">${yen(monthSum)}</div><div class="sub">今月の出金</div></div></div></section>
+    <div class="data-panel"><span class="panel-label">Pool Balance</span><div class="big-num">${man(poolBalance())}</div><div class="sub">プール残高</div></div>
+    <div class="data-panel"><span class="panel-label">Unpaid</span><div class="big-num">${unpaid.length}件 / ${man(unpaidSum)}</div><div class="sub">未補填の申告</div></div>
+    <div class="data-panel"><span class="panel-label">Monthly Out</span><div class="big-num">${man(monthSum)}</div><div class="sub">今月の出金</div></div></div></section>
   <section class="tech-section"><span class="sec-num">02</span><h2>Open Operations</h2>
   <div class="grid grid-3">${open.map((j, i) => jobCard(j, i)).join("") || '<p class="sub">なし</p>'}</div></section>
   <section class="tech-section"><span class="sec-num">03</span><h2>By Member</h2>
   <table class="tech-table"><tr><th>名前</th><th>申告件数</th><th>補填済み</th><th>未補填</th></tr>
-  ${members.map(m => `<tr><td><b>${esc(m.name)}</b></td><td>${m.count}</td><td>${yen(m.paid)}</td><td>${yen(m.unpaid)}</td></tr>`).join("") || '<tr><td colspan="4">なし</td></tr>'}</table></section>
+  ${members.map(m => `<tr><td><b>${esc(m.name)}</b></td><td>${m.count}</td><td>${man(m.paid)}</td><td>${man(m.unpaid)}</td></tr>`).join("") || '<tr><td colspan="4">なし</td></tr>'}</table></section>
   <section class="tech-section"><span class="sec-num">04</span><h2>Monthly Out</h2>
   <table class="tech-table"><tr><th>月</th><th>出金合計</th></tr>
-  ${months.map(m => `<tr><td>${esc(m.month)}</td><td><b>${yen(m.total)}</b></td></tr>`).join("") || '<tr><td colspan="2">なし</td></tr>'}</table>
+  ${months.map(m => `<tr><td>${esc(m.month)}</td><td><b>${man(m.total)}</b></td></tr>`).join("") || '<tr><td colspan="2">なし</td></tr>'}</table>
   <div style="margin-top:12px;display:flex;gap:8px;"><button onclick="exportCSV('claims')" class="btn-ghost">申告CSV</button><button onclick="exportCSV('pool')" class="btn-ghost">台帳CSV</button></div></section>
   <section class="tech-section"><span class="sec-num">05</span><h2>Unclaimed</h2>
   ${remindRows.map(({ j, missing }) => `<div class="data-panel" style="margin-bottom:12px;"><span class="panel-label">${esc(crimeName(j.crime_type_id))}</span><div style="margin-top:8px;">${missing.map(esc).join("、")} <span class="sub">が未申告</span></div><div style="margin-top:8px;"><button onclick="remindUnclaimed('${j.id}')" class="btn-ghost">Discordに投稿</button></div></div>`).join("") || '<p class="sub">未申告者なし</p>'}</section>
@@ -770,9 +782,9 @@ function viewJobDetail(id) {
       <form onsubmit="submitClaim('${j.id}',event)" class="tech-form">
         <div class="field"><label>自分の名前</label>${me ? `<p>${esc(me.name)}として申告します</p><input type="hidden" name="name" value="${esc(me.name)}" />` : memberSelectHTML("name", "自分の名前")}</div>
         <div class="form-row c3" style="margin-top:12px;">
-          <div class="field"><label>罰金</label><input name="fine_amount" type="number" min="0" value="0" /></div>
-          <div class="field"><label>個人医代</label><input name="medic_cost" type="number" min="0" value="0" /></div>
-          <div class="field"><label>その他</label><input name="other_cost" type="number" min="0" value="0" /></div>
+          <div class="field"><label>罰金（万）</label><input name="fine_amount" type="number" min="0" value="0" /></div>
+          <div class="field"><label>個人医代（万）</label><input name="medic_cost" type="number" min="0" value="0" /></div>
+          <div class="field"><label>その他（万）</label><input name="other_cost" type="number" min="0" value="0" /></div>
         </div>
         <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-top:8px;"><input name="medic_used" type="checkbox" style="width:auto;" /> 個人医を利用した</label>
         <div class="field" style="margin-top:8px;"><label>備考</label><input name="note" placeholder="備考" /></div>
@@ -782,8 +794,8 @@ function viewJobDetail(id) {
   <section class="tech-section"><span class="sec-num">03</span><h2>Claims (${claims.length})</h2>
   <table class="tech-table"><tr><th>NO</th><th>名前</th><th>内訳</th><th>合計</th><th>状態</th><th></th></tr>
   ${claims.map((c, i) => `<tr><td class="num">${String(i + 1).padStart(2, "0")}</td><td><b>${esc(c.member_name)}</b></td>
-    <td style="font-size:12px;">罰金${yen(c.fine_amount)} / 個人医${c.medic_used ? yen(c.medic_cost) : "なし"} / 他${yen(c.other_cost)}</td>
-    <td><b>${yen(claimTotal(c))}</b></td><td>${statusBadge(c.status)}</td>
+    <td style="font-size:12px;">罰金${man(c.fine_amount)} / 個人医${c.medic_used ? man(c.medic_cost) : "なし"} / 他${man(c.other_cost)}</td>
+    <td><b>${man(claimTotal(c))}</b></td><td>${statusBadge(c.status)}</td>
     <td>${c.status !== "補填済み" && isBoss() ? `<button onclick="markPaid('${c.id}')" class="btn-accent" style="padding:6px 12px;font-size:12px;">補填済み</button> <button onclick="deleteClaim('${c.id}')" class="btn-ghost" style="padding:6px 12px;font-size:12px;">削除</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="6">申告なし</td></tr>'}</table></section>`
   + (canManageJob(j) ? `<div style="text-align:center;margin:48px 0 24px;"><button onclick="deleteJob('${j.id}')" style="background:#D63031;color:#fff;border:2px solid #7A0E0E;font-weight:700;padding:12px 48px;cursor:pointer;font-size:14px;letter-spacing:2px;">枠を削除</button></div>` : "");
 }
@@ -792,18 +804,18 @@ function viewPool() {
   <div class="lock-note">プールを開くにはログインが必要です。右上からログインしてください。</div></section>`;
   const txs = CACHE.pool.slice().reverse();
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Pool</h2>
-  <div class="data-panel"><span class="panel-label">Balance</span><div class="big-num">${isBoss() ? yen(poolBalance()) : "***"}</div><div class="sub">プール残高</div></div>
+  <div class="data-panel"><span class="panel-label">Balance</span><div class="big-num">${isBoss() ? man(poolBalance()) : "***"}</div><div class="sub">プール残高</div></div>
   ${isBoss() ? `<div class="data-panel" style="margin-top:24px;"><span class="panel-label">In / Out</span>
     <form onsubmit="addPool(event)" class="tech-form"><div class="form-row c2">
       <div class="field"><label>種別</label><select name="type"><option>入金</option><option>出金</option></select></div>
-      <div class="field"><label>金額</label><input name="amount" type="number" min="1" placeholder="金額" /></div></div>
+      <div class="field"><label>金額（万）</label><input name="amount" type="number" min="1" placeholder="金額（万）" /></div></div>
       <div class="field" style="margin-top:12px;"><label>メモ</label><input name="memo" placeholder="上納金 / 分配金など" /></div>
       <div style="margin-top:12px;"><button class="btn-primary">登録</button></div></form></div>`
   : `<p class="lock-note">入出金登録にはloginが必要です。</p>`}
   </section>
   <section class="tech-section"><span class="sec-num">02</span><h2>Ledger</h2>
   <table class="tech-table"><tr><th>種別</th><th>金額</th><th>メモ</th><th>日時</th></tr>
-  ${txs.map(t => `<tr><td>${statusBadge(t.type === "入金" ? "申請中" : "補填済み")} ${esc(t.type)}</td><td><b>${yen(t.amount)}</b></td><td>${esc(t.memo || "")}</td><td style="font-size:12px;">${esc((t.created_at || "").slice(0, 16))}</td></tr>`).join("") || '<tr><td colspan="4">履歴なし</td></tr>'}</table></section>`;
+  ${txs.map(t => `<tr><td>${statusBadge(t.type === "入金" ? "申請中" : "補填済み")} ${esc(t.type)}</td><td><b>${man(t.amount)}</b></td><td>${esc(t.memo || "")}</td><td style="font-size:12px;">${esc((t.created_at || "").slice(0, 16))}</td></tr>`).join("") || '<tr><td colspan="4">履歴なし</td></tr>'}</table></section>`;
 }
 function viewMembers() {
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Members</h2>
@@ -827,6 +839,7 @@ function render() {
   else if (h.startsWith("#/jobs/")) { route = "jobs"; app.innerHTML = `<div class="fade-in">${viewJobDetail(h.split("/")[2])}</div>`; }
   else if (h.startsWith("#/pool")) { route = "pool"; app.innerHTML = `<div class="fade-in">${viewPool()}</div>`; }
   else if (h.startsWith("#/members")) { route = "members"; app.innerHTML = `<div class="fade-in">${viewMembers()}</div>`; }
+  else if (h.startsWith("#/boss")) { route = "boss"; app.innerHTML = `<div class="fade-in">${viewBoss()}</div>`; }
   else { route = "jobs"; app.innerHTML = `<div class="fade-in">${viewJobs()}</div>`; }
   setChrome(route);
   window.scrollTo(0, 0);
