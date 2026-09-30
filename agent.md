@@ -29,7 +29,7 @@
 - [x] プール台帳: 入金・出金手動登録、補填連動の出金自動作成、残高表示
 - [x] 集計: 犯罪種別絞り込み、メンバー別、月別（直近6か月）
 - [x] エクスポート: JSON + CSV（申告・台帳、Excel用BOM付き）
-- [x] メンバー管理: 追加・役職変更・有効/無効切替（ボスのみ）
+- [x] メンバー管理: 追加・役職変更・削除（ボスのみ、はい/いいえ確認、申告記録ありは削除不可）
 ### Phase2
 - [ ] Discord Webhook通知（枠作成・申告・補填完了）
 - [ ] 証拠スクショ保存（Supabase Storage）
@@ -56,7 +56,8 @@
 
 ## 6. DB設計
 ### 6.1 テーブル
-- members: id(uuid), name(text unique), role(text: boss/underboss/member), is_active(bool default true), created_at
+- members: id(uuid), name(text unique), role(text: boss/underboss/member/mercenary), is_active(bool default true), created_at
+- 閲覧制御（アプリ側）: member以上は全枠表示、mercenary・無記名は受付中の枠＋自分の参加枠のみ（端末内のあなた選択で判定、ボスloginは全表示）
 - crime_types: id(serial), category(text: 準大型/大型), name(text unique), capacity(int), default_fine(int default 0), default_medic(int default 0)
   - 初期マスタ（確定）:
     - 準大型 / 客船 / 12人

@@ -61,17 +61,20 @@ async function boot() {
 }
 const poolBalance = () => CACHE.pool.reduce((s, t) => s + (t.type === "入金" ? t.amount : -t.amount), 0);
 
-async function ensureMember(name) {
+async function ensureMember(name, role = "member") {
   name = (name || "").trim();
   if (!name) return null;
   let m = CACHE.members.find(x => x.name === name);
   if (m) return m;
   if (MODE === "remote") {
-    const r = await sb().from("members").upsert({ name }, { onConflict: "name" }).select("id,name,role,is_active");
-    if (r.error) throw r.error;
-    m = r.data[0] || (await sb().from("members").select("id,name,role,is_active").eq("name", name).single()).data;
+    const ins = await sb().from("members").insert({ name, role }).select("id,name,role,is_active").single();
+    if (ins.error) {
+      const sel = await sb().from("members").select("id,name,role,is_active").eq("name", name).single();
+      if (sel.error) throw sel.error;
+      m = sel.data;
+    } else m = ins.data;
   } else {
-    m = { id: uid(), name, role: "member", is_active: true };
+    m = { id: uid(), name, role, is_active: true };
   }
   if (!CACHE.members.some(x => x.name === name)) CACHE.members.push(m);
   if (MODE === "local") persistLocal();
@@ -81,12 +84,23 @@ function crimeName(id) { const t = CRIME_TYPES.find(x => x.id === Number(id)); r
 function memberSelectHTML(field, placeholder) {
   const act = CACHE.members.filter(m => m.is_active !== false);
   if (!act.length) return `<input name="${field}" placeholder="${placeholder}" />`;
-  return `<select name="${field}">${act.map(m => `<option value="${esc(m.name)}">${esc(m.name)}（${esc(m.role)}）</option>`).join("")}</select>
+  return `<select name="${field}"><option value="">名前を選択</option>${act.map(m => `<option value="${esc(m.name)}">${esc(m.name)}（${esc(m.role)}）</option>`).join("")}</select>
   <input name="new${field}" placeholder="新規の場合は入力" style="margin-top:8px;" />`;
 }
 function statusBadge(s) {
   const cls = s === "完了" || s === "補填済み" ? "b-done" : s === "精算中" || s === "申請中" ? "b-progress" : "b-open";
   return `<span class="badge ${cls}">${esc(s)}</span>`;
+}
+function confirmYesNo(msg) {
+  return new Promise(resolve => {
+    const ov = document.createElement("div");
+    ov.className = "modal-bg";
+    ov.innerHTML = `<div class="modal-box"><p style="margin-top:0;">${esc(msg)}</p><div style="display:flex;gap:8px;"><button id="cfYes" class="btn-primary" style="width:auto;flex:1;">はい</button><button id="cfNo" class="btn-ghost" style="flex:1;">いいえ</button></div></div>`;
+    document.body.appendChild(ov);
+    const done = (v) => { ov.remove(); resolve(v); };
+    ov.querySelector("#cfYes").onclick = () => done(true);
+    ov.querySelector("#cfNo").onclick = () => done(false);
+  });
 }
 function setChrome(route) {
   document.getElementById("modeBadge").textContent =
@@ -122,7 +136,7 @@ window.joinJob = async (jobId, e) => {
   const fd0 = new FormData(e.target);
   const name = ((fd0.get("newname") || "").trim() || (fd0.get("name") || "").trim());
   if (!name) return alert("名前を選択または入力");
-  const m = await ensureMember(name);
+  const m = await ensureMember(name, "mercenary");
   if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
   if (!j) return;
@@ -322,16 +336,26 @@ window.leaveJob = async (jobId) => {
   if (MODE === "local") persistLocal();
   render();
 };
-window.toggleMember = async (mid) => {
+window.deleteMember = async (mid) => {
   if (!isBoss()) return alert("ボス-loginが必要");
   const m = CACHE.members.find(x => String(x.id) === String(mid));
   if (!m) return;
-  const next = !(m.is_active !== false);
+  if (!await confirmYesNo(`${m.name}をメンバーから削除しますか？`)) return;
   if (MODE === "remote") {
-    const r = await sb().from("members").update({ is_active: next }).eq("id", mid);
-    if (r.error) return alert("更新失敗: " + r.error.message);
+    const cl = await sb().from("expense_claims").select("id").eq("member_id", mid).limit(1);
+    if (!cl.error && cl.data.length) return alert("申告記録があるため削除できません");
+    const pt = await sb().from("pool_transactions").select("id").eq("handled_by", mid).limit(1);
+    if (!pt.error && pt.data.length) return alert("台帳の担当記録があるため削除できません");
+    await sb().from("job_participants").delete().eq("member_id", mid);
+    const r = await sb().from("members").delete().eq("id", mid);
+    if (r.error) return alert("削除失敗: " + r.error.message);
     await pullRemote();
-  } else { m.is_active = next; persistLocal(); }
+  } else {
+    if (CACHE.claims.some(c => String(c.member_id) === String(mid))) return alert("申告記録があるため削除できません");
+    CACHE.jobs.forEach(j => { j.participants = j.participants.filter(p => p !== m.name); });
+    CACHE.members = CACHE.members.filter(x => String(x.id) !== String(mid));
+    persistLocal();
+  }
   render();
 };
 window.setMemberRole = async (mid, role) => {
@@ -396,6 +420,22 @@ let jobSearch = "", statusFilter = "";
 window.setJobSearch = (e) => { e.preventDefault(); jobSearch = (new FormData(e.target).get("q") || "").trim(); render(); };
 window.clearJobSearch = () => { jobSearch = ""; statusFilter = ""; crimeFilter = 0; render(); };
 window.setStatusFilter = (v) => { statusFilter = v; render(); };
+function viewerName() { return localStorage.getItem("gang_viewer") || ""; }
+function viewerRole() {
+  const n = viewerName();
+  if (!n) return "anon";
+  const m = CACHE.members.find(x => x.name === n);
+  return m ? m.role : "anon";
+}
+function canViewJob(j) {
+  if (isBoss()) return true;
+  const r = viewerRole();
+  if (r === "boss" || r === "underboss" || r === "member") return true;
+  if (j.status === "受付中") return true;
+  const n = viewerName();
+  return !!n && (j.participants.includes(n) || CACHE.claims.some(c => String(c.job_id) === String(j.id) && c.member_name === n));
+}
+window.setViewer = (v) => { if (v) localStorage.setItem("gang_viewer", v); else localStorage.removeItem("gang_viewer"); render(); };
 window.setCrimeFilter = (id) => { crimeFilter = crimeFilter === id ? 0 : id; render(); };
 window.exportJSON = () => {
   const a = document.createElement("a");
@@ -475,9 +515,17 @@ function targetMatrix() {
 }
 function viewJobs() {
   const q = jobSearch;
-  const jobs = CACHE.jobs.filter(j => (!crimeFilter || Number(j.crime_type_id) === crimeFilter) && (!statusFilter || j.status === statusFilter) && (!q || (crimeName(j.crime_type_id) + " " + (j.location || "") + " " + (j.memo || "")).includes(q)));
+  const jobs = CACHE.jobs.filter(j => (!crimeFilter || Number(j.crime_type_id) === crimeFilter) && (!statusFilter || j.status === statusFilter) && (!q || (crimeName(j.crime_type_id) + " " + (j.location || "") + " " + (j.memo || "")).includes(q)) && canViewJob(j));
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Targets</h2>${targetMatrix()}</section>
   <section class="tech-section"><span class="sec-num">02</span><h2>Operations</h2>
+  <div class="data-panel" style="margin-bottom:12px;"><span class="panel-label">You — あなた</span>
+    <div class="field"><label>あなたの名前（無記名可）</label>
+    <select onchange="setViewer(this.value)">
+      <option value="">無記名</option>
+      ${CACHE.members.filter(m => m.is_active !== false).map(m => `<option value="${esc(m.name)}" ${viewerName() === m.name ? "selected" : ""}>${esc(m.name)}（${esc(m.role)}）</option>`).join("")}
+    </select></div>
+    <div class="sub" style="margin-top:8px;font-size:12px;">member以外は募集中の枠と自分の参加枠のみ表示されます</div>
+  </div>
   <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
     <form onsubmit="setJobSearch(event)" style="display:flex;gap:8px;"><input name="q" placeholder="検索（犯罪・場所・メモ）" value="${esc(jobSearch)}" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);" /><button class="btn-ghost">検索</button></form>
     <select onchange="setStatusFilter(this.value)" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);">
@@ -517,6 +565,7 @@ function hexProgress(j, claims) {
 function viewJobDetail(id) {
   const j = CACHE.jobs.find(x => String(x.id) === String(id));
   if (!j) return `<p>枠が見つかりません</p><a href="#/jobs">戻る</a>`;
+  if (!canViewJob(j)) return `<a href="#/jobs" style="font-size:12px;">← OPERATIONSへ戻る</a><div class="lock-note" style="margin-top:16px;">この枠は表示できません。募集中の枠か、自分の参加枠のみ閲覧可能です。</div>`;
   const claims = CACHE.claims.filter(c => String(c.job_id) === String(id));
   return `<a href="#/jobs" style="font-size:12px;">← OPERATIONSへ戻る</a>
   <section class="tech-section" style="margin-top:16px;"><span class="sec-num">01</span><h2>${esc(crimeName(j.crime_type_id))}</h2>
@@ -588,14 +637,13 @@ function viewMembers() {
   ${isBoss() ? `<div class="data-panel"><span class="panel-label">Add Member</span>
     <form onsubmit="addMember(event)" class="tech-form"><div class="form-row c2">
       <div class="field"><label>名前</label><input name="name" placeholder="名前" /></div>
-      <div class="field"><label>役職</label><select name="role"><option value="member">構成員</option><option value="underboss">アンダーボス</option><option value="boss">ボス</option></select></div></div>
+      <div class="field"><label>役職</label><select name="role"><option value="member">構成員</option><option value="mercenary">傭兵</option><option value="underboss">アンダーボス</option><option value="boss">ボス</option></select></div></div>
       <div style="margin-top:12px;"><button class="btn-primary">追加</button></div></form></div>`
   : `<p class="lock-note">メンバー編集にはloginが必要です</p>`}
-  <table class="tech-table" style="margin-top:24px;"><tr><th>NO</th><th>名前</th><th>役職</th><th>状態</th><th></th></tr>
+  <table class="tech-table" style="margin-top:24px;"><tr><th>NO</th><th>名前</th><th>役職</th><th></th></tr>
   ${CACHE.members.map((m, i) => `<tr><td class="num">${String(i + 1).padStart(2, "0")}</td><td><b>${esc(m.name)}</b></td>
-    <td>${isBoss() ? `<select onchange="setMemberRole('${m.id}',this.value)" style="background:var(--tech-dark);color:#fff;border:1px solid var(--tech-cyan);padding:4px;">${["member", "underboss", "boss"].map(r => `<option value="${r}" ${m.role === r ? "selected" : ""}>${r}</option>`).join("")}</select>` : esc(m.role)}</td>
-    <td>${m.is_active !== false ? "有効" : "無効"}</td>
-    <td>${isBoss() ? `<button onclick="toggleMember('${m.id}')" class="btn-ghost" style="padding:4px 12px;font-size:12px;">${m.is_active !== false ? "無効化" : "有効化"}</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="5">メンバー未登録</td></tr>'}</table></section>`;
+    <td>${isBoss() ? `<select onchange="setMemberRole('${m.id}',this.value)" style="background:var(--tech-dark);color:#fff;border:1px solid var(--tech-cyan);padding:4px;">${["member", "mercenary", "underboss", "boss"].map(r => `<option value="${r}" ${m.role === r ? "selected" : ""}>${r}</option>`).join("")}</select>` : esc(m.role)}</td>
+    <td>${isBoss() ? `<button onclick="deleteMember('${m.id}')" class="btn-accent" style="padding:4px 12px;font-size:12px;">削除</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="4">メンバー未登録</td></tr>'}</table></section>`;
 }
 
 function render() {
@@ -611,8 +659,8 @@ function render() {
   window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", render);
-document.getElementById("loginBtn").onclick = () => {
-  if (isBoss()) { sessionStorage.removeItem(LS.boss); render(); return; }
+document.getElementById("loginBtn").onclick = async () => {
+  if (isBoss()) { if (await confirmYesNo("ログアウトしますか？")) { sessionStorage.removeItem(LS.boss); render(); } return; }
   document.getElementById("logoutBtn").style.display = "none";
   document.getElementById("loginModal").classList.remove("hidden");
 };
@@ -623,6 +671,6 @@ window.doLogin = (e) => {
   if (v === window.AppConfig.BOSS_PASSCODE) { sessionStorage.setItem(LS.boss, "1"); document.getElementById("loginModal").classList.add("hidden"); document.getElementById("loginPass").value = ""; render(); }
   else alert("合言葉が違います");
 };
-document.getElementById("logoutBtn").onclick = () => { sessionStorage.removeItem(LS.boss); document.getElementById("loginModal").classList.add("hidden"); render(); };
+document.getElementById("logoutBtn").onclick = async () => { if (await confirmYesNo("ログアウトしますか？")) { sessionStorage.removeItem(LS.boss); document.getElementById("loginModal").classList.add("hidden"); render(); } };
 if (!location.hash) location.hash = "#/jobs";
 boot().then(render);
