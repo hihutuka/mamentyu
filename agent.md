@@ -20,15 +20,15 @@
 5. 台帳連動: 補填済み化と同時に `pool_transactions` に出金レコードを自動作成（handled_by=対応したボス名）
 
 ## 3. 機能要件
-### MVP
-- [ ] ダッシュボード: プール残高、今月支出、未補填件数・金額、受付中の枠一覧
-- [ ] 犯罪枠CRUD: 作成、編集、クローズ、削除（権限制御あり）
-- [ ] 参加管理: 参加追加/離脱、代理追加
-- [ ] 申告フォーム: 自分のclaimのみ作成・編集、合計自動計算
-- [ ] ボス承認UI: 個別トグル + 一括補填ボタン、残高不足警告
-- [ ] プール台帳: 入金（上納金・分配金）手動登録、出金自動+手動、残高表示
-- [ ] 集計: メンバー別、犯罪種別別、月別、フィルタ・検索
-- [ ] CSV/JSONエクスポート
+### MVP（2026-09-30時点）
+- [x] ダッシュボード: プール残高、今月出金、未補填件数・金額、受付中の枠一覧（ボスのみ）
+- [~] 犯罪枠CRUD: 作成・クローズ済み、編集・削除は未実装
+- [~] 参加管理: 参加追加・代理追加済み、離脱は未実装
+- [x] 申告フォーム: 自分のclaimのみ作成・編集、合計自動計算
+- [~] ボス承認UI: 個別 + 一括補填済みボタン済み、残高不足警告は未実装
+- [x] プール台帳: 入金・出金手動登録、補填連動の出金自動作成、残高表示
+- [~] 集計: 犯罪種別絞り込みのみ、メンバー別・月別は未実装
+- [~] エクスポート: JSONのみ、CSVは未実装
 ### Phase2
 - [ ] Discord Webhook通知（枠作成・申告・補填完了）
 - [ ] 証拠スクショ保存（Supabase Storage）
@@ -97,32 +97,34 @@ insert into crime_types(category, name, capacity) values
 - 出金時に残高不足なら警告表示（ブロックはしない＝現場優先）
 
 ## 9. GitHub Pagesデプロイ手順
-1. GitHubで `gang-pool` 等のリポジトリ作成（public）
-2. このフォルダの `index.html` 群を `/docs` に配置
-3. Settings > Pages > Deploy from branch: `main` / `/docs`
-4. SupabaseのURL・anon keyを `supabaseClient.js` に設定
-5. 動作確認後、メンバーにURL共有（publicのためサーバー名・本名は載せない）
+1. GitHubでリポジトリ作成（public）→ 済み：`hihutuka/mamentyu`
+2. このフォルダの `docs/` を配置 → 済み
+3. Settings > Pages > Deploy from branch: `main` / `/docs` → 済み（表示確認済み）
+4. SupabaseのURL・anon keyを `supabaseClient.js` に設定 → 済み
+5. Supabase SQL Editorで `schema.sql` を実行 → 未確認
+6. 動作確認後、メンバーにURL共有（publicのためサーバー名・本名は載せない）
 
 ## 10. 開発タスクリスト
-- [x] crime_types初期データ確定（7件確定、上記マスタ）
-- [x] schema.sql作成（適用待ち）
-- [x] docs試作版作成（index.html/app.js/supabaseClient.js、ローカル動作可、ボス混在認証）
-- [x] Supabaseキー埋め込み + RLS適用（キー埋め込み済み、SQL適用は手動要）
-- [x] supabaseClient.js + Auth本番化（合言葉「豆人あずき」設定済み、Supabase Auth本格化はTODO）
-- [ ] git commit済み（ローカル）→ push + Pages有効化（認証待ち）
-- [ ] supabaseClient.js + Auth（合言葉方式か個別アカウントか決定）
-- [ ] index.html骨格 + 4タブSPA
-- [ ] 枠作成・参加・申告・補填のCRUD接続
-- [ ] プール残高計算・警告・集計クエリ
-- [ ] エクスポート機能
+### 完了
+- [x] crime_types初期データ確定（7件）
+- [x] schema.sql作成（RLS試運転ポリシー付き）
+- [x] docs試作版（Tech Editorial UI、4タブSPA、ボス混在認証、合言葉設定済み）
+- [x] Supabaseキー・合言葉埋め込み
+- [x] push + Pages公開（表示確認済み）
+### 残り（優先度順）
+- [ ] schema.sql適用確認（Supabase側で実行済みか）
+- [ ] Supabase実接続（現状localStorageのみ、共有不可）
+- [ ] RLS本番厳格化 + Supabase Auth化（現状は合言葉のみ）
+- [ ] 欠け機能：枠編集・削除、参加離脱、残高不足警告、メンバー別/月別集計、CSV出力、メンバー無効化・役職変更
+- [ ] Phase2：Discord通知、証拠画像、月次レポート
 - [ ] 試験運用（10人1週間）→ 修正
 
-## 11. 未決定・要ヒアリング
-- A. 参加者追加は幹部代行可か
-- B. 一括補填ボタンの要否（暫定あり）
-- C. Supabase Auth方式（個別メールか合言葉共有か）
-- D. 犯罪種別マスタの初期リスト
-- E. GitHubアカウント・リポジトリ名・Pages公開範囲の承認
+## 11. 決定済み事項（元・要ヒアリング）
+- A. 参加者追加：自己申告 + 幹部代理の両方可
+- B. 一括補填ボタン：あり（個別マークと併用）
+- C. Auth方式：ハイブリッド（一般は認証なし、補填・ダッシュボード・プールはボスlogin）
+- D. 犯罪種別マスタ：7件確定
+- E. GitHub：`hihutuka/mamentyu`、Pages公開済み
 
 ## 12. セキュリティ・運用注意
 - GitHub Pagesはpublic前提。キャラ名はハンドルネームのみ推奨
