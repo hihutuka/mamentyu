@@ -117,6 +117,7 @@ window.joinJob = async (jobId, e) => {
   if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
   if (!j) return;
+  if (j.status === "完了" && !isBoss()) return alert("この枠は完了済みです");
   if (MODE === "remote") {
     const r = await sb().from("job_participants").upsert({ job_id: jobId, member_id: m.id }, { onConflict: "job_id,member_id" });
     if (r.error) return alert("参加失敗: " + r.error.message);
@@ -134,6 +135,8 @@ window.submitClaim = async (jobId, e) => {
   if (!name) return alert("名前を入力");
   const cur = CACHE.claims.find(c => String(c.job_id) === String(jobId) && c.member_name === name);
   if (cur && cur.status === "補填済み" && !isBoss()) return alert("補填済みのため編集不可（ボスに連絡）");
+  const jobSt = CACHE.jobs.find(x => String(x.id) === String(jobId));
+  if (jobSt && jobSt.status === "完了" && !isBoss()) return alert("この枠は完了済みです（ボスに連絡）");
   const m = await ensureMember(name);
   if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const medic_used = fd.get("medic_used") === "on";
@@ -357,6 +360,33 @@ window.saveWebhook = (e) => {
   alert("保存しました（この端末のみ有効）");
   render();
 };
+window.reopenJob = async (jobId) => {
+  if (!isBoss()) return alert("ボス-loginが必要");
+  if (!confirm("この枠を精算中に戻しますか？")) return;
+  if (MODE === "remote") {
+    const r = await sb().from("crime_jobs").update({ status: "精算中" }).eq("id", jobId);
+    if (r.error) return alert("更新失敗: " + r.error.message);
+    await pullRemote();
+  } else {
+    const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
+    if (j) j.status = "精算中";
+    persistLocal();
+  }
+  render();
+};
+window.remindUnclaimed = (jobId) => {
+  if (!isBoss()) return alert("ボス-loginが必要");
+  const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
+  if (!j) return;
+  const missing = j.participants.filter(p => !CACHE.claims.some(c => String(c.job_id) === String(jobId) && c.member_name === p));
+  if (!missing.length) return alert("未申告者はいません");
+  notifyDiscord(`【未申告リマインド】${crimeName(j.crime_type_id)} / 未申告: ${missing.join("、")} / 申告してください`);
+  alert("Discordに投稿しました");
+};
+let jobSearch = "", statusFilter = "";
+window.setJobSearch = (e) => { e.preventDefault(); jobSearch = (new FormData(e.target).get("q") || "").trim(); render(); };
+window.clearJobSearch = () => { jobSearch = ""; statusFilter = ""; crimeFilter = 0; render(); };
+window.setStatusFilter = (v) => { statusFilter = v; render(); };
 window.setCrimeFilter = (id) => { crimeFilter = crimeFilter === id ? 0 : id; render(); };
 window.exportJSON = () => {
   const a = document.createElement("a");
@@ -393,6 +423,7 @@ function viewDashboard() {
     ? `<div class="data-panel" style="border-color:var(--tech-accent);margin-bottom:24px;"><span class="panel-label" style="background:var(--tech-accent);">Warning</span>未補填${yen(unpaidSum)}がプール残高${yen(poolBalance())}を上回っています。上納を促してください。</div>` : "";
   const members = memberAgg();
   const months = monthAgg();
+  const remindRows = CACHE.jobs.filter(j => j.status !== "完了").map(j => ({ j, missing: j.participants.filter(p => !CACHE.claims.some(c => String(c.job_id) === String(j.id) && c.member_name === p)) })).filter(x => x.missing.length);
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Dashboard</h2>${warn}
   <div class="grid grid-3">
     <div class="data-panel"><span class="panel-label">Pool Balance</span><div class="big-num">${yen(poolBalance())}</div><div class="sub">プール残高</div></div>
@@ -407,7 +438,9 @@ function viewDashboard() {
   <table class="tech-table"><tr><th>月</th><th>出金合計</th></tr>
   ${months.map(m => `<tr><td>${esc(m.month)}</td><td><b>${yen(m.total)}</b></td></tr>`).join("") || '<tr><td colspan="2">なし</td></tr>'}</table>
   <div style="margin-top:12px;display:flex;gap:8px;"><button onclick="exportCSV('claims')" class="btn-ghost">申告CSV</button><button onclick="exportCSV('pool')" class="btn-ghost">台帳CSV</button></div></section>
-  <section class="tech-section"><span class="sec-num">05</span><h2>Notify</h2>
+  <section class="tech-section"><span class="sec-num">05</span><h2>Unclaimed</h2>
+  ${remindRows.map(({ j, missing }) => `<div class="data-panel" style="margin-bottom:12px;"><span class="panel-label">${esc(crimeName(j.crime_type_id))}</span><div style="margin-top:8px;">${missing.map(esc).join("、")} <span class="sub">が未申告</span></div><div style="margin-top:8px;"><button onclick="remindUnclaimed('${j.id}')" class="btn-ghost">Discordに投稿</button></div></div>`).join("") || '<p class="sub">未申告者なし</p>'}</section>
+  <section class="tech-section"><span class="sec-num">06</span><h2>Notify</h2>
   <div class="data-panel"><span class="panel-label">Discord Webhook</span>
     <div class="sub" style="margin-bottom:12px;">現在: ${esc(((localStorage.getItem("gang_webhook") || window.AppConfig.DISCORD_WEBHOOK_URL || "未設定")).slice(0, 60))}...</div>
     <form onsubmit="saveWebhook(event)" class="tech-form"><div class="field"><label>URL（空で既定に戻す、この端末のみ）</label><input name="url" placeholder="https://discord.com/api/webhooks/..." /></div>
@@ -432,7 +465,8 @@ function targetMatrix() {
   <p class="sub" style="font-size:12px;color:var(--tech-gray);">TARGETS — 選択で絞り込み（再クリックで解除）</p>`;
 }
 function viewJobs() {
-  const jobs = CACHE.jobs.filter(j => !crimeFilter || Number(j.crime_type_id) === crimeFilter);
+  const q = jobSearch;
+  const jobs = CACHE.jobs.filter(j => (!crimeFilter || Number(j.crime_type_id) === crimeFilter) && (!statusFilter || j.status === statusFilter) && (!q || (crimeName(j.crime_type_id) + " " + (j.location || "") + " " + (j.memo || "")).includes(q)));
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Targets</h2>${targetMatrix()}</section>
   <section class="tech-section"><span class="sec-num">02</span><h2>New Operation</h2>
   <div class="data-panel"><span class="panel-label">Create Frame</span>
@@ -448,7 +482,14 @@ function viewJobs() {
     <div style="margin-top:12px;"><button class="btn-primary">枠を立てる</button></div>
   </form></div></section>
   <section class="tech-section"><span class="sec-num">03</span><h2>Operations</h2>
-  <div style="margin-bottom:12px;"><button onclick="exportJSON()" class="btn-ghost">JSON出力</button></div>
+  <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <form onsubmit="setJobSearch(event)" style="display:flex;gap:8px;"><input name="q" placeholder="検索（犯罪・場所・メモ）" value="${esc(jobSearch)}" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);" /><button class="btn-ghost">検索</button></form>
+    <select onchange="setStatusFilter(this.value)" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);">
+      <option value="">全部</option>${["受付中", "精算中", "完了"].map(s => `<option ${statusFilter === s ? "selected" : ""}>${s}</option>`).join("")}
+    </select>
+    ${(jobSearch || statusFilter || crimeFilter) ? `<button onclick="clearJobSearch()" class="btn-ghost">解除</button>` : ""}
+    <button onclick="exportJSON()" class="btn-ghost">JSON出力</button>
+  </div>
   <div class="grid grid-3">${jobs.map((j, i) => jobCard(j, i)).join("") || '<p class="sub">まだ枠がありません</p>'}</div></section>`;
 }
 function hexProgress(j, claims) {
@@ -476,6 +517,7 @@ function viewJobDetail(id) {
     <div style="margin-top:8px;">${j.participants.map(p => `<span class="chip">${esc(p)}</span>`).join("") || '<span class="sub">参加者なし</span>'}
     ${j.participants.length ? `<button onclick="leaveJob('${j.id}')" class="btn-ghost" style="padding:4px 12px;font-size:12px;margin-left:8px;">離脱する</button>` : ""}</div>
     ${isBoss() ? `<div style="margin-top:12px;"><button onclick="markAllPaid('${j.id}')" class="btn-accent">全員を一括補填済みにする</button></div>` : ""}
+    ${isBoss() && j.status === "完了" ? `<div style="margin-top:12px;"><button onclick="reopenJob('${j.id}')" class="btn-ghost">精算中に戻す</button></div>` : ""}
   </div>
   ${isBoss() ? `<div class="data-panel" style="margin-top:24px;"><span class="panel-label">Edit Frame</span>
   <form onsubmit="updateJob('${j.id}',event)" class="tech-form">
