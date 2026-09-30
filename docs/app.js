@@ -563,9 +563,32 @@ function monthAgg() {
   });
   return Object.keys(map).sort().reverse().slice(0, 6).map(k => ({ month: k, total: map[k] }));
 }
+let bossMenuOpen = false;
+window.toggleBossMenu = () => { bossMenuOpen = !bossMenuOpen; render(); };
 function viewDashboard() {
-  if (!isBoss()) return `<section class="tech-section"><span class="sec-num">01</span><h2>Dashboard</h2>
+  if (!currentUser()) return `<section class="tech-section"><span class="sec-num">01</span><h2>Dashboard</h2>
     <div class="lock-note">ダッシュボードを開くにはログインが必要です。右上からログインしてください。参加登録、補填は「Operations」から可能です。</div></section>`;
+  if (!isBoss()) return myPanel() + recruitSection();
+  return myPanel() + `<div style="text-align:right;margin-bottom:12px;"><button onclick="toggleBossMenu()" class="btn-ghost">ボスメニュー ${bossMenuOpen ? "▲" : "▼"}</button></div>`
+    + (bossMenuOpen ? bossFull() : `<p class="sub">管理情報はボスメニューから開きます</p>`);
+}
+function recruitSection() {
+  const open = CACHE.jobs.filter(j => j.status === "受付中" && canViewJob(j));
+  return `<section class="tech-section"><span class="sec-num">01</span><h2>Recruiting</h2>
+  <div class="grid grid-3">${open.map((j, i) => recruitCard(j, i)).join("") || '<p class="sub">募集中の枠はありません</p>'}</div></section>`;
+}
+function recruitCard(j, i) {
+  const me = currentUser();
+  const joined = me && j.participants.includes(me.name);
+  const t = CRIME_TYPES.find(x => x.id === Number(j.crime_type_id));
+  return `<div class="tech-card">
+    <div class="card-top"><span class="diag-num">${String(i + 1).padStart(2, "0")}</span>${statusBadge(j.status)}</div>
+    <div class="card-title">${esc(crimeName(j.crime_type_id))}</div>
+    <div class="card-meta">${esc((j.occurred_at || "").slice(0, 16))} / 参加${j.participants.length}人${t ? " / 定員" + t.capacity + "人" : ""}</div>
+    <div style="margin-top:12px;">${joined ? `<span class="badge b-paid">参加ずみ</span>` : `<button onclick="joinAsMe('${j.id}')" class="btn-primary">参加</button>`}</div>
+  </div>`;
+}
+function bossFull() {
   const unpaid = CACHE.claims.filter(c => c.status !== "補填済み");
   const unpaidSum = unpaid.reduce((s, c) => s + claimTotal(c), 0);
   const monthSum = CACHE.pool.filter(t => t.type === "出金" && new Date(t.created_at).getMonth() === new Date().getMonth()).reduce((s, t) => s + t.amount, 0);
@@ -618,7 +641,7 @@ function targetMatrix() {
 function viewJobs() {
   const q = jobSearch;
   const jobs = CACHE.jobs.filter(j => (!crimeFilter || Number(j.crime_type_id) === crimeFilter) && (!statusFilter || j.status === statusFilter) && (!q || (crimeName(j.crime_type_id) + " " + (j.location || "") + " " + (j.memo || "")).includes(q)) && canViewJob(j));
-  return `${myPanel()}<section class="tech-section"><span class="sec-num">01</span><h2>Targets</h2>${targetMatrix()}</section>
+  return `<section class="tech-section"><span class="sec-num">01</span><h2>Targets</h2>${targetMatrix()}</section>
   <section class="tech-section"><span class="sec-num">02</span><h2>Operations</h2>
   <div class="data-panel" style="margin-bottom:12px;"><span class="panel-label">You — あなた</span>
     <div class="field"><label>あなたの名前（無記名可）</label>
