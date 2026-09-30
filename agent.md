@@ -112,7 +112,8 @@ insert into crime_types(category, name, capacity) values
 - [x] schema.sql作成（RLS試運転ポリシー付き）
 - [x] docs試作版（Tech Editorial UI、4タブSPA、ボス混在認証、合言葉設定済み）
 - [x] Supabaseキー・合言葉埋め込み
-- [x] 専用ログイン（街の名＋パスワード、端末保持、Myパネル、本人パス変更、新規作成は傭兵、合言葉廃止・ロール管理に一本化）
+- [x] 専用ログイン（街の名＋パスワード、端末保持、本人パス変更、新規作成は傭兵、合言葉廃止・ロール管理に一本化）
+- [x] 役割別ダッシュボード（My＋補填待ち、ボスメニュー開閉、募集中ワンボタン参加・参加ずみ表示）
 - [x] push + Pages公開（表示確認済み）
 ### 残り（優先度順）
 - [x] schema.sql適用確認（7件取得OK、Table Editorでも確認済み）
