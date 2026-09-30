@@ -3,41 +3,46 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>補填台帳 — ギャング補填管理</title>
+<title>GANG REIMBURSE — ギャング補填管理</title>
 <link rel="stylesheet" href="./styles.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-<nav class="literary-nav">
-<div class="nav-container">
-<div class="nav-title">補填台帳 <span class="accent-number">01</span></div>
-<div class="nav-menu">
-<a href="#/dashboard" data-nav="dashboard">台帳概要</a>
-<a href="#/jobs" data-nav="jobs">犯罪枠</a>
-<a href="#/pool" data-nav="pool">プール金</a>
-<a href="#/members" data-nav="members">名簿</a>
-<span id="poolBadge" class="pool-line"></span>
-<button id="loginBtn" class="btn-ink">ボス</button>
+<header class="site-header">
+<div class="inner">
+<div class="header-row">
+<div>
+<span class="tech-tag">FIVEM / GANG OPERATIONS</span>
+<h1 class="tech-title">GANG REIMBURSE</h1>
+<div class="tech-subtitle">ギャング補填管理</div>
+<p class="tech-desc">犯罪枠を立て、参加・被害申告を集め、プール金から全額補填するまでの作戦ボード。現場はログイン不要、補填操作のみボス権限。</p>
+</div>
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+<span id="poolBadge" class="pool-chip"></span>
+<button id="loginBtn" class="btn-boss">BOSS LOGIN</button>
 </div>
 </div>
+<nav class="tech-nav">
+<a href="#/dashboard" data-nav="dashboard">01 Dashboard</a>
+<a href="#/jobs" data-nav="jobs">02 Operations</a>
+<a href="#/pool" data-nav="pool">03 Pool</a>
+<a href="#/members" data-nav="members">04 Members</a>
 </nav>
-<div class="hero">
-<div class="hero-label">GANG LEDGER — FIVEM</div>
-<h1 class="hero-title">犯罪のあと、金をきれいに。<span>誰が・どこで・いくらを記録する補填台帳</span></h1>
-<p class="hero-description">枠を立て、参加を集め、罰金と個人医代を申告し、プール金から補填するまで。現場はログイン不要、補填の印だけボスが押す。</p>
 <div id="modeBadge" class="mode-line"></div>
 </div>
+</header>
 <main id="app"></main>
 <div id="loginModal" class="modal-bg hidden">
-<div class="modal-box literary-form">
-<h3 style="margin-top:0;">ボス / アンダーボス</h3>
-<p style="font-size:0.9rem;color:var(--sub);">補填の印・プール入出金・台帳概要に必要。一般参加は不要。</p>
+<div class="modal-box tech-form">
+<span class="panel-label">Boss Auth</span>
+<h2 style="margin-top:8px;">ボス / アンダーボス ログイン</h2>
+<p class="sub" style="font-size:13px;color:var(--tech-gray);">一般参加はログイン不要。補填完了・プール入出金・ダッシュボードのみ必要。</p>
 <input id="loginPass" type="password" placeholder="合言葉" />
-<div style="display:flex;gap:0.8rem;margin-top:1rem;">
-<button id="loginGo" class="btn-main" style="width:auto;flex:1;">入る</button>
-<button id="loginClose" class="btn-sub" style="flex:1;">閉じる</button>
+<div style="display:flex;gap:8px;margin-top:12px;">
+<button id="loginGo" class="btn-primary" style="width:auto;flex:1;">ログイン</button>
+<button id="loginClose" class="btn-ghost" style="flex:1;">閉じる</button>
 </div>
-<button id="logoutBtn" style="background:none;border:none;text-decoration:underline;font-size:0.8rem;color:var(--sub);margin-top:0.8rem;cursor:pointer;">出る（ログアウト）</button>
+<button id="logoutBtn" style="background:none;border:none;text-decoration:underline;font-size:12px;color:var(--tech-gray);margin-top:8px;cursor:pointer;">ログアウト</button>
 </div>
 </div>
 <script src="./supabaseClient.js"></script>

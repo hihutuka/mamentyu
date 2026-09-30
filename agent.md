@@ -36,7 +36,7 @@
 
 ## 4. 技術構成
 - Frontend: ビルド不要。`index.html` + `styles.css` + `app.js` + `supabaseClient.js`、Supabase JS v2 CDN
-  - デザイン: Literary Editorialテンプレート採用（紙色背景・インク枠・番号カード・黒表。Techは切替前候補）
+  - デザイン: Tech Editorialテンプレート採用（運用ダッシュボード向け）
 - Backend: Supabase Postgres + Auth + RLS + Realtime
 - Hosting: GitHub Pages（`main`ブランチ `/docs` または `gh-pages`）
 - ルーティング: ハッシュSPA `#/dashboard` `#/jobs` `#/jobs/:id` `#/pool` `#/members`
