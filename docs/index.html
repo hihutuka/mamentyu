@@ -41,11 +41,13 @@
 <div style="margin-top:12px;"><button class="btn-primary" style="width:100%;">ログイン</button></div>
 </form>
 <details style="margin-top:12px;">
-<summary style="font-size:12px;cursor:pointer;color:var(--tech-gray);">合言葉で入る（移行用）</summary>
-<form onsubmit="doLogin(event)" class="tech-form" style="margin-top:8px;">
-<input id="loginPass" type="text" autocomplete="off" autocapitalize="off" placeholder="合言葉" />
-<div style="margin-top:8px;"><button class="btn-ghost" style="width:100%;">合言葉で入る</button></div>
+<summary style="font-size:12px;cursor:pointer;color:var(--tech-gray);">新規作成（初めての方）</summary>
+<form onsubmit="signupUser(event)" class="tech-form" style="margin-top:8px;">
+<div class="field"><label>名前（街の名）</label><input name="newusername" placeholder="名前" /></div>
+<div class="field" style="margin-top:8px;"><label>パスワード（4文字以上）</label><input name="newpassword" type="text" autocomplete="off" placeholder="パスワード" /></div>
+<div style="margin-top:8px;"><button class="btn-primary" style="width:100%;">作成してログイン</button></div>
 </form>
+<p style="font-size:11px;color:var(--tech-gray);">初期ロールは傭兵です。構成員への変更はボスに連絡してください。</p>
 </details>
 <button type="button" id="loginClose" class="btn-ghost" style="width:100%;margin-top:12px;">閉じる</button>
 <button id="logoutBtn" style="background:none;border:none;text-decoration:underline;font-size:12px;color:var(--tech-gray);margin-top:8px;cursor:pointer;">ログアウト</button>

@@ -37,6 +37,21 @@ insert into member_secrets(member_id, password_hash)
 select id, crypt('TEMP-PASS', gen_salt('bf')) from members
 on conflict (member_id) do update set password_hash = excluded.password_hash, updated_at = now();
 
+-- 新規作成（初期ロールは傭兵、同名不可）
+create or replace function signup_member(p_name text, p_password text)
+returns table(id uuid, name text, role text)
+language plpgsql security definer set search_path = public as $$
+declare nid uuid;
+begin
+  if p_name is null or btrim(p_name) = '' then raise exception 'empty name'; end if;
+  if char_length(p_password) < 4 then raise exception 'short password'; end if;
+  perform 1 from members where name = btrim(p_name);
+  if found then raise exception 'name taken'; end if;
+  insert into members(name, role) values (btrim(p_name), 'mercenary') returning members.id into nid;
+  insert into member_secrets(member_id, password_hash) values (nid, crypt(p_password, gen_salt('bf')));
+  return query select m.id, m.name, m.role from members m where m.id = nid;
+end $$;
+
 -- 個別設定用テンプレ（名前とパスを変えて実行）
 -- insert into member_secrets(member_id, password_hash)
 -- values ((select id from members where name='名前'), crypt('パス', gen_salt('bf')))

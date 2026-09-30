@@ -16,7 +16,7 @@ const saveLS = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 const uid = () => Math.random().toString(36).slice(2, 10);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function currentUser() { try { return JSON.parse(localStorage.getItem("gang_user")); } catch { return null; } }
-const isBoss = () => sessionStorage.getItem(LS.boss) === "1" || ["boss", "underboss"].includes((currentUser() || {}).role);
+const isBoss = () => ["boss", "underboss"].includes((currentUser() || {}).role);
 const yen = (n) => (Number(n) || 0).toLocaleString("ja-JP") + "円";
 const claimTotal = (c) => (Number(c.fine_amount) || 0) + (c.medic_used ? (Number(c.medic_cost) || 0) : 0) + (Number(c.other_cost) || 0);
 let crimeFilter = 0;
@@ -324,8 +324,8 @@ window.deleteJob = async (jobId) => {
   location.hash = "#/jobs";
   render();
 };
-window.leaveJob = async (jobId) => {
-  const who = (prompt("離脱する名前を入力") || "").trim();
+window.leaveJob = async (jobId, fixedName) => {
+  const who = (fixedName || (prompt("離脱する名前を入力") || "").trim());
   if (!who) return;
   const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
   if (!j || !j.participants.includes(who)) return alert("参加者にいません");
@@ -487,6 +487,57 @@ function myPanel() {
     <div class="field"><label>新しいパスワード</label><input name="newpw" type="text" autocomplete="off" /></div></div>
   <div style="margin-top:8px;"><button class="btn-ghost">パスワード変更</button></div></form></div>`;
 }
+window.signupUser = async (e) => {
+  e.preventDefault();
+  if (MODE !== "remote") return alert("共有DBに接続できていないため作成できません");
+  const fd = new FormData(e.target);
+  const name = (fd.get("newusername") || "").trim();
+  const pw = (fd.get("newpassword") || "").trim();
+  if (!name) return alert("名前を入力");
+  if (pw.length < 4) return alert("パスワードは4文字以上にしてください");
+  const r = await sb().rpc("signup_member", { p_name: name, p_password: pw });
+  if (r.error) return alert("作成失敗: " + r.error.message);
+  localStorage.setItem("gang_user", JSON.stringify(r.data[0]));
+  document.getElementById("loginModal").classList.add("hidden");
+  render();
+  alert("アカウントを作成しました（傭兵）。枠に参加できます");
+};
+window.joinAsMe = async (jobId) => {
+  const u = currentUser();
+  if (!u) return alert("ログインしてください");
+  const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
+  if (!j) return;
+  if (j.status === "完了") return alert("この枠は完了済みです");
+  if (j.participants.includes(u.name)) return alert("参加済みです");
+  const m = CACHE.members.find(x => x.name === u.name);
+  if (m && m.is_active === false) return alert("無効化されています（ボスに連絡）");
+  if (MODE === "remote") {
+    const mid = m ? m.id : (await ensureMember(u.name, "mercenary")).id;
+    const r = await sb().from("job_participants").upsert({ job_id: jobId, member_id: mid }, { onConflict: "job_id,member_id" });
+    if (r.error) return alert("参加失敗: " + r.error.message);
+    if (j.status === "受付中") await sb().from("crime_jobs").update({ status: "精算中" }).eq("id", jobId);
+  }
+  if (!j.participants.includes(u.name)) j.participants.push(u.name);
+  if (j.status === "受付中") j.status = "精算中";
+  if (MODE === "local") persistLocal();
+  render();
+};
+window.deleteClaim = async (claimId) => {
+  if (!isBoss()) return alert("ボス-loginが必要");
+  const c = CACHE.claims.find(x => String(x.id) === String(claimId));
+  if (!c) return;
+  if (c.status === "補填済み") return alert("補填済みのため削除不可");
+  if (!await confirmYesNo(`${c.member_name}の申告を削除しますか？`)) return;
+  if (MODE === "remote") {
+    const r = await sb().from("expense_claims").delete().eq("id", claimId);
+    if (r.error) return alert("削除失敗: " + r.error.message);
+    await pullRemote();
+  } else {
+    CACHE.claims = CACHE.claims.filter(x => String(x.id) !== String(claimId));
+    persistLocal();
+  }
+  render();
+};
 window.setCrimeFilter = (id) => { crimeFilter = crimeFilter === id ? 0 : id; render(); };
 window.exportJSON = () => {
   const a = document.createElement("a");
@@ -618,6 +669,7 @@ function viewJobDetail(id) {
   if (!j) return `<p>枠が見つかりません</p><a href="#/jobs">戻る</a>`;
   if (!canViewJob(j)) return `<a href="#/jobs" style="font-size:12px;">← OPERATIONSへ戻る</a><div class="lock-note" style="margin-top:16px;">この枠は表示できません。募集中の枠か、自分の参加枠のみ閲覧可能です。</div>`;
   const claims = CACHE.claims.filter(c => String(c.job_id) === String(id));
+  const me = currentUser();
   return `<a href="#/jobs" style="font-size:12px;">← OPERATIONSへ戻る</a>
   <section class="tech-section" style="margin-top:16px;"><span class="sec-num">01</span><h2>${esc(crimeName(j.crime_type_id))}</h2>
   <div class="data-panel"><span class="panel-label">Operation Detail</span>
@@ -643,11 +695,14 @@ function viewJobDetail(id) {
   <section class="tech-section"><span class="sec-num">02</span><h2>Join / Claim</h2>
   <div class="form-row c2">
     <div class="data-panel"><span class="panel-label">Join</span>
-      <form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label>${memberSelectHTML("name", "参加する名前")}</div>
-      <div style="margin-top:12px;"><button class="btn-primary">参加</button></div></form></div>
+      ${me ? (j.participants.includes(me.name)
+        ? `<p>${esc(me.name)}として参加中です</p><div style="margin-top:12px;"><button onclick="leaveJob('${j.id}',this.dataset.n)" data-n="${esc(me.name)}" class="btn-ghost">離脱する</button></div>`
+        : `<p>${esc(me.name)}として参加します</p><div style="margin-top:12px;"><button onclick="joinAsMe('${j.id}')" class="btn-primary">参加</button></div>`)
+      : `<form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label>${memberSelectHTML("name", "参加する名前")}</div>
+      <div style="margin-top:12px;"><button class="btn-primary">参加</button></div></form>`}</div>
     <div class="data-panel"><span class="panel-label">Claim</span>
       <form onsubmit="submitClaim('${j.id}',event)" class="tech-form">
-        <div class="field"><label>自分の名前</label>${memberSelectHTML("name", "自分の名前")}</div>
+        <div class="field"><label>自分の名前</label>${me ? `<p>${esc(me.name)}として申告します</p><input type="hidden" name="name" value="${esc(me.name)}" />` : memberSelectHTML("name", "自分の名前")}</div>
         <div class="form-row c3" style="margin-top:12px;">
           <div class="field"><label>罰金</label><input name="fine_amount" type="number" min="0" value="0" /></div>
           <div class="field"><label>個人医代</label><input name="medic_cost" type="number" min="0" value="0" /></div>
@@ -663,7 +718,7 @@ function viewJobDetail(id) {
   ${claims.map((c, i) => `<tr><td class="num">${String(i + 1).padStart(2, "0")}</td><td><b>${esc(c.member_name)}</b></td>
     <td style="font-size:12px;">罰金${yen(c.fine_amount)} / 個人医${c.medic_used ? yen(c.medic_cost) : "なし"} / 他${yen(c.other_cost)}</td>
     <td><b>${yen(claimTotal(c))}</b></td><td>${statusBadge(c.status)}</td>
-    <td>${c.status !== "補填済み" && isBoss() ? `<button onclick="markPaid('${c.id}')" class="btn-accent" style="padding:6px 12px;font-size:12px;">補填済み</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="6">申告なし</td></tr>'}</table></section>`;
+    <td>${c.status !== "補填済み" && isBoss() ? `<button onclick="markPaid('${c.id}')" class="btn-accent" style="padding:6px 12px;font-size:12px;">補填済み</button> <button onclick="deleteClaim('${c.id}')" class="btn-ghost" style="padding:6px 12px;font-size:12px;">削除</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="6">申告なし</td></tr>'}</table></section>`;
 }
 function viewPool() {
   if (!isBoss()) return `<section class="tech-section"><span class="sec-num">01</span><h2>Pool</h2>
@@ -719,12 +774,6 @@ document.getElementById("loginBtn").onclick = async () => {
   document.getElementById("loginModal").classList.remove("hidden");
 };
 document.getElementById("loginClose").onclick = () => document.getElementById("loginModal").classList.add("hidden");
-window.doLogin = (e) => {
-  if (e) e.preventDefault();
-  const v = document.getElementById("loginPass").value;
-  if (v === window.AppConfig.BOSS_PASSCODE) { sessionStorage.setItem(LS.boss, "1"); document.getElementById("loginModal").classList.add("hidden"); document.getElementById("loginPass").value = ""; render(); }
-  else alert("合言葉が違います");
-};
 document.getElementById("logoutBtn").onclick = () => { logoutUser(); };
 if (!location.hash) location.hash = "#/jobs";
 boot().then(render);
