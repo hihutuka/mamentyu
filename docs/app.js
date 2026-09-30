@@ -84,10 +84,10 @@ function statusBadge(s) {
 }
 function setChrome(route) {
   document.getElementById("modeBadge").textContent =
-    (MODE === "remote" ? "SUPABASE // SHARED" : "SUPABASE // LOCAL") + " / " + (isBoss() ? "BOSS:IN" : "BOSS:OUT");
-  document.getElementById("poolBadge").innerHTML = `POOL <b>${yen(poolBalance())}</b>`;
+    (MODE === "remote" ? "SUPABASE // SHARED" : "SUPABASE // LOCAL") + " / " + (isBoss() ? "LOGIN:IN" : "LOGIN:OUT");
+  document.getElementById("poolBadge").innerHTML = isBoss() ? `POOL <b>${yen(poolBalance())}</b>` : `POOL ***`;
   const btn = document.getElementById("loginBtn");
-  btn.textContent = isBoss() ? "BOSS:IN" : "BOSS LOGIN";
+  btn.textContent = isBoss() ? "IN" : "LOGIN";
   btn.classList.toggle("on", isBoss());
   document.querySelectorAll("[data-nav]").forEach(a => a.classList.toggle("active", a.dataset.nav === route));
 }
@@ -414,7 +414,7 @@ function monthAgg() {
 }
 function viewDashboard() {
   if (!isBoss()) return `<section class="tech-section"><span class="sec-num">01</span><h2>Dashboard</h2>
-    <div class="lock-note">ダッシュボードはボス/アンダーボスのみ。右上からログインしてください。一般参加は「犯罪枠」から登録できます。</div></section>`;
+    <div class="lock-note">ダッシュボードを開くにはログインが必要です。右上からログインしてください。参加登録、補填は「Operations」から可能です。</div></section>`;
   const unpaid = CACHE.claims.filter(c => c.status !== "補填済み");
   const unpaidSum = unpaid.reduce((s, c) => s + claimTotal(c), 0);
   const monthSum = CACHE.pool.filter(t => t.type === "出金" && new Date(t.created_at).getMonth() === new Date().getMonth()).reduce((s, t) => s + t.amount, 0);
@@ -468,7 +468,17 @@ function viewJobs() {
   const q = jobSearch;
   const jobs = CACHE.jobs.filter(j => (!crimeFilter || Number(j.crime_type_id) === crimeFilter) && (!statusFilter || j.status === statusFilter) && (!q || (crimeName(j.crime_type_id) + " " + (j.location || "") + " " + (j.memo || "")).includes(q)));
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Targets</h2>${targetMatrix()}</section>
-  <section class="tech-section"><span class="sec-num">02</span><h2>New Operation</h2>
+  <section class="tech-section"><span class="sec-num">02</span><h2>Operations</h2>
+  <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <form onsubmit="setJobSearch(event)" style="display:flex;gap:8px;"><input name="q" placeholder="検索（犯罪・場所・メモ）" value="${esc(jobSearch)}" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);" /><button class="btn-ghost">検索</button></form>
+    <select onchange="setStatusFilter(this.value)" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);">
+      <option value="">全部</option>${["受付中", "精算中", "完了"].map(s => `<option ${statusFilter === s ? "selected" : ""}>${s}</option>`).join("")}
+    </select>
+    ${(jobSearch || statusFilter || crimeFilter) ? `<button onclick="clearJobSearch()" class="btn-ghost">解除</button>` : ""}
+    <button onclick="exportJSON()" class="btn-ghost">JSON出力</button>
+  </div>
+  <div class="grid grid-3">${jobs.map((j, i) => jobCard(j, i)).join("") || '<p class="sub">まだ枠がありません</p>'}</div></section>
+  <section class="tech-section"><span class="sec-num">03</span><h2>New Operation</h2>
   <div class="data-panel"><span class="panel-label">Create Frame</span>
   <form onsubmit="createJob(event)" class="tech-form">
     <div class="form-row c2">
@@ -480,17 +490,7 @@ function viewJobs() {
       <div class="field"><label>Memo</label><input name="memo" placeholder="例: 22時集合" /></div>
     </div>
     <div style="margin-top:12px;"><button class="btn-primary">枠を立てる</button></div>
-  </form></div></section>
-  <section class="tech-section"><span class="sec-num">03</span><h2>Operations</h2>
-  <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-    <form onsubmit="setJobSearch(event)" style="display:flex;gap:8px;"><input name="q" placeholder="検索（犯罪・場所・メモ）" value="${esc(jobSearch)}" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);" /><button class="btn-ghost">検索</button></form>
-    <select onchange="setStatusFilter(this.value)" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);">
-      <option value="">全部</option>${["受付中", "精算中", "完了"].map(s => `<option ${statusFilter === s ? "selected" : ""}>${s}</option>`).join("")}
-    </select>
-    ${(jobSearch || statusFilter || crimeFilter) ? `<button onclick="clearJobSearch()" class="btn-ghost">解除</button>` : ""}
-    <button onclick="exportJSON()" class="btn-ghost">JSON出力</button>
-  </div>
-  <div class="grid grid-3">${jobs.map((j, i) => jobCard(j, i)).join("") || '<p class="sub">まだ枠がありません</p>'}</div></section>`;
+  </form></div></section>`;
 }
 function hexProgress(j, claims) {
   const hasP = j.participants.length > 0;
@@ -559,14 +559,14 @@ function viewJobDetail(id) {
 function viewPool() {
   const txs = CACHE.pool.slice().reverse();
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Pool</h2>
-  <div class="data-panel"><span class="panel-label">Balance</span><div class="big-num">${yen(poolBalance())}</div><div class="sub">プール残高</div></div>
+  <div class="data-panel"><span class="panel-label">Balance</span><div class="big-num">${isBoss() ? yen(poolBalance()) : "***"}</div><div class="sub">プール残高</div></div>
   ${isBoss() ? `<div class="data-panel" style="margin-top:24px;"><span class="panel-label">In / Out</span>
     <form onsubmit="addPool(event)" class="tech-form"><div class="form-row c2">
       <div class="field"><label>種別</label><select name="type"><option>入金</option><option>出金</option></select></div>
       <div class="field"><label>金額</label><input name="amount" type="number" min="1" placeholder="金額" /></div></div>
       <div class="field" style="margin-top:12px;"><label>メモ</label><input name="memo" placeholder="上納金 / 分配金など" /></div>
       <div style="margin-top:12px;"><button class="btn-primary">登録</button></div></form></div>`
-  : `<p class="lock-note">入出金登録はボス-loginが必要。閲覧は全員可。</p>`}
+  : `<p class="lock-note">入出金登録にはloginが必要です。</p>`}
   </section>
   <section class="tech-section"><span class="sec-num">02</span><h2>Ledger</h2>
   <table class="tech-table"><tr><th>種別</th><th>金額</th><th>メモ</th><th>日時</th></tr>
@@ -579,7 +579,7 @@ function viewMembers() {
       <div class="field"><label>名前</label><input name="name" placeholder="名前" /></div>
       <div class="field"><label>役職</label><select name="role"><option value="member">構成員</option><option value="underboss">アンダーボス</option><option value="boss">ボス</option></select></div></div>
       <div style="margin-top:12px;"><button class="btn-primary">追加</button></div></form></div>`
-  : `<p class="lock-note">メンバー編集はボスのみ。閲覧は全員可。参加・申告時に自動追加されます。</p>`}
+  : `<p class="lock-note">メンバー編集にはloginが必要です</p>`}
   <table class="tech-table" style="margin-top:24px;"><tr><th>NO</th><th>名前</th><th>役職</th><th>状態</th><th></th></tr>
   ${CACHE.members.map((m, i) => `<tr><td class="num">${String(i + 1).padStart(2, "0")}</td><td><b>${esc(m.name)}</b></td>
     <td>${isBoss() ? `<select onchange="setMemberRole('${m.id}',this.value)" style="background:var(--tech-dark);color:#fff;border:1px solid var(--tech-cyan);padding:4px;">${["member", "underboss", "boss"].map(r => `<option value="${r}" ${m.role === r ? "selected" : ""}>${r}</option>`).join("")}</select>` : esc(m.role)}</td>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>GANG REIMBURSE — ギャング補填管理</title>
+<title>GANG REIMBURSE — 補填管理システム</title>
 <link rel="stylesheet" href="./styles.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -12,14 +12,13 @@
 <div class="inner">
 <div class="header-row">
 <div>
-<span class="tech-tag">FIVEM / GANG OPERATIONS</span>
+<span class="tech-tag">GANG OPERATIONS</span>
 <h1 class="tech-title">GANG REIMBURSE</h1>
-<div class="tech-subtitle">ギャング補填管理</div>
-<p class="tech-desc">犯罪枠を立て、参加・被害申告を集め、プール金から全額補填するまでの作戦ボード。現場はログイン不要、補填操作のみボス権限。</p>
+<div class="tech-subtitle">補填管理システム</div>
 </div>
 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
 <span id="poolBadge" class="pool-chip"></span>
-<button id="loginBtn" class="btn-boss">BOSS LOGIN</button>
+<button id="loginBtn" class="btn-boss">LOGIN</button>
 </div>
 </div>
 <nav class="tech-nav">
@@ -36,7 +35,7 @@
 <div class="modal-box tech-form">
 <span class="panel-label">Boss Auth</span>
 <h2 style="margin-top:8px;">ボス / アンダーボス ログイン</h2>
-<p class="sub" style="font-size:13px;color:var(--tech-gray);">一般参加はログイン不要。補填完了・プール入出金・ダッシュボードのみ必要。</p>
+<p class="sub" style="font-size:13px;color:var(--tech-gray);">一般参加はログイン不要です。補填完了・プール入出金・ダッシュボード閲覧にはloginが必要です。</p>
 <input id="loginPass" type="password" placeholder="合言葉" />
 <div style="display:flex;gap:8px;margin-top:12px;">
 <button id="loginGo" class="btn-primary" style="width:auto;flex:1;">ログイン</button>
