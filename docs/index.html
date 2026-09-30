@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ギャング補填管理</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+<header class="border-b border-slate-800 sticky top-0 bg-slate-950/90 z-10">
+<div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+<div class="font-bold">ギャング補填管理 <span id="modeBadge" class="text-xs ml-2 px-2 py-0.5 rounded bg-slate-800"></span></div>
+<div class="flex items-center gap-2 text-sm">
+<span id="poolBadge" class="px-2 py-1 rounded bg-emerald-900 text-emerald-200"></span>
+<button id="loginBtn" class="px-3 py-1 rounded bg-slate-800">ボス-login</button>
+</div>
+</div>
+<nav class="max-w-3xl mx-auto px-4 pb-2 flex gap-2 text-sm">
+<a href="#/dashboard" class="px-3 py-1 rounded bg-slate-800">ダッシュボード</a>
+<a href="#/jobs" class="px-3 py-1 rounded bg-slate-800">犯罪枠</a>
+<a href="#/pool" class="px-3 py-1 rounded bg-slate-800">プール</a>
+<a href="#/members" class="px-3 py-1 rounded bg-slate-800">メンバー</a>
+</nav>
+</header>
+<main id="app" class="max-w-3xl mx-auto px-4 py-4"></main>
+<div id="loginModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4">
+<div class="bg-slate-900 border border-slate-700 rounded p-5 w-full max-w-sm space-y-3">
+<h2 class="font-bold">ボス / アンダーボス ログイン</h2>
+<p class="text-xs text-slate-400">一般参加はログイン不要。補填操作・プール出金のみ必要。</p>
+<input id="loginPass" type="password" placeholder="合言葉" class="w-full bg-slate-800 rounded p-2" />
+<div class="flex gap-2">
+<button id="loginGo" class="flex-1 bg-emerald-700 rounded py-2">ログイン</button>
+<button id="loginClose" class="flex-1 bg-slate-800 rounded py-2">閉じる</button>
+</div>
+<button id="logoutBtn" class="w-full text-xs text-slate-400 underline">ログアウト</button>
+</div>
+</div>
+<script src="./supabaseClient.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
