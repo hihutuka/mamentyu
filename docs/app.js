@@ -84,12 +84,12 @@ function statusBadge(s) {
 }
 function setChrome(route) {
   document.getElementById("modeBadge").textContent =
-    (MODE === "remote" ? "SUPABASE // SHARED" : "SUPABASE // LOCAL") + " / " + (isBoss() ? "LOGIN:IN" : "LOGIN:OUT");
+    (MODE === "remote" ? "SUPABASE // SHARED" : "SUPABASE // LOCAL") + " / " + (isBoss() ? "LOGIN中" : "未ログイン");
   const poolEl = document.getElementById("poolBadge");
   if (isBoss()) { poolEl.style.display = ""; poolEl.innerHTML = `POOL <b>${yen(poolBalance())}</b>`; }
   else { poolEl.style.display = "none"; }
   const btn = document.getElementById("loginBtn");
-  btn.textContent = isBoss() ? "IN" : "LOGIN";
+  btn.textContent = isBoss() ? "login中" : "LOGIN";
   btn.classList.toggle("on", isBoss());
   document.querySelectorAll("[data-nav]").forEach(a => a.classList.toggle("active", a.dataset.nav === route));
 }
@@ -604,7 +604,11 @@ function render() {
   window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", render);
-document.getElementById("loginBtn").onclick = () => document.getElementById("loginModal").classList.remove("hidden");
+document.getElementById("loginBtn").onclick = () => {
+  if (isBoss()) { sessionStorage.removeItem(LS.boss); render(); return; }
+  document.getElementById("logoutBtn").style.display = "none";
+  document.getElementById("loginModal").classList.remove("hidden");
+};
 document.getElementById("loginClose").onclick = () => document.getElementById("loginModal").classList.add("hidden");
 window.doLogin = (e) => {
   if (e) e.preventDefault();
