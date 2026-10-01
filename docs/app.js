@@ -872,8 +872,10 @@ function viewMembers() {
     <td>${isBoss() ? `<button onclick="deleteMember('${m.id}')" class="btn-accent" style="padding:4px 12px;font-size:12px;">削除</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="4">メンバー未登録</td></tr>'}</table></section>`;
 }
 
+let lastHash = "";
 function render() {
   const h = location.hash || "#/jobs";
+  const y = window.scrollY;
   const app = document.getElementById("app");
   let route = "jobs";
   if (h.startsWith("#/dashboard")) { route = "dashboard"; app.innerHTML = `<div class="fade-in">${viewDashboard()}</div>`; }
@@ -883,7 +885,9 @@ function render() {
   else if (h.startsWith("#/boss")) { route = "boss"; app.innerHTML = `<div class="fade-in">${viewBoss()}</div>`; }
   else { route = "jobs"; app.innerHTML = `<div class="fade-in">${viewJobs()}</div>`; }
   setChrome(route);
-  window.scrollTo(0, 0);
+  if (h !== lastHash) { lastHash = h; window.scrollTo(0, 0); }
+  else { window.scrollTo(0, y); }
+  lastSig = JSON.stringify(CACHE);
 }
 window.addEventListener("hashchange", render);
 document.getElementById("loginBtn").onclick = async () => {
@@ -898,11 +902,19 @@ document.getElementById("loginClose").onclick = () => document.getElementById("l
 document.getElementById("logoutBtn").onclick = () => { logoutUser(); };
 if (!location.hash) location.hash = "#/jobs";
 let rtTimer = null;
+let lastSig = "";
 async function onRemoteChange() {
   if (MODE !== "remote") return;
   if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
   clearTimeout(rtTimer);
-  rtTimer = setTimeout(async () => { try { await pullRemote(); render(); } catch (e) { console.warn(e); } }, 800);
+  rtTimer = setTimeout(async () => {
+    try {
+      await pullRemote();
+      const sig = JSON.stringify(CACHE);
+      if (sig === lastSig) return;
+      render();
+    } catch (e) { console.warn(e); }
+  }, 1200);
 }
 function subscribeRealtime() {
   if (!sb() || MODE !== "remote") return;
