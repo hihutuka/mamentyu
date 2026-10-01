@@ -57,8 +57,9 @@
 
 ## 6. DB設計
 ### 6.1 テーブル
-- members: id(uuid), name(text unique), role(text: boss/underboss/member/mercenary), is_active(bool default true), created_at
-- 閲覧制御（アプリ側）: member以上は全枠表示、mercenary・無記名は受付中の枠＋自分の参加枠のみ（端末内のあなた選択で判定、ボスloginは全表示）
+- members: id(uuid), name(text unique), role(text: boss/underboss/member), is_active(bool default true), created_at
+- 非名簿参加者: job_participants / expense_claims は member_id nullable + guest_name で記録。名簿を作らず参加・申告可
+- 閲覧制御（アプリ側）: 未ログインはOperationsのみ。member以上は全枠表示、名簿外の名前は募集中の枠＋自分の参加枠のみ（端末内のあなた選択で判定、ボスloginは全表示）
 - crime_types: id(serial), category(text: 準大型/大型), name(text unique), capacity(int), default_fine(int default 0), default_medic(int default 0)
   - 初期マスタ（確定）:
     - 準大型 / 客船 / 12人
