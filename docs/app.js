@@ -830,11 +830,11 @@ function viewJobDetail(id) {
       ${me ? (j.participants.includes(me.name)
         ? `<p>${esc(me.name)}として参加中です</p><div style="margin-top:12px;"><button onclick="leaveJob('${j.id}',this.dataset.n)" data-n="${esc(me.name)}" class="btn-ghost">離脱する</button></div>`
         : `<p>${esc(me.name)}として参加します</p><div style="margin-top:12px;"><button onclick="joinAsMe('${j.id}')" class="btn-primary">参加</button></div>`)
-      : `<form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label>${memberSelectHTML("name", "参加する名前", !!currentUser())}</div>
+      : `<form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label>${memberSelectHTML("name", "参加する名前", true)}</div>
       <div style="margin-top:12px;"><button class="btn-primary">参加</button></div></form>`}</div>
     <div class="data-panel"><span class="panel-label">Claim</span>
       <form onsubmit="submitClaim('${j.id}',event)" class="tech-form">
-        <div class="field"><label>自分の名前</label>${me ? `<p>${esc(me.name)}として申告します</p><input type="hidden" name="name" value="${esc(me.name)}" />` : memberSelectHTML("name", "自分の名前", false)}</div>
+        <div class="field"><label>自分の名前</label>${me ? `<p>${esc(me.name)}として申告します</p><input type="hidden" name="name" value="${esc(me.name)}" />` : memberSelectHTML("name", "自分の名前", true)}</div>
         <div class="form-row c3" style="margin-top:12px;">
           <div class="field"><label>罰金（万）</label><input name="fine_amount" type="number" min="0" value="0" /></div>
           <div class="field"><label>個人医代（万）</label><input name="medic_cost" type="number" min="0" value="0" /></div>
