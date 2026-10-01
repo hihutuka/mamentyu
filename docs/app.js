@@ -46,18 +46,18 @@ async function pullRemote() {
   const [m, j, p, c, t] = await Promise.all([
     sb().from("members").select("id,name,role,is_active"),
     sb().from("crime_jobs").select("id,crime_type_id,occurred_at,location,memo,status,created_by,created_at").order("created_at", { ascending: false }),
-    sb().from("job_participants").select("job_id,member_id"),
-    sb().from("expense_claims").select("id,job_id,member_id,fine_amount,medic_used,medic_cost,other_cost,status,note,updated_at"),
+    sb().from("job_participants").select("job_id,member_id,guest_name"),
+    sb().from("expense_claims").select("id,job_id,member_id,guest_name,fine_amount,medic_used,medic_cost,other_cost,status,note,updated_at"),
     sb().from("pool_transactions").select("id,type,amount,memo,claim_id,job_id,created_at").order("created_at", { ascending: true }),
   ]);
   for (const r of [m, j, p, c, t]) if (r.error) throw r.error;
   const byId = Object.fromEntries(m.data.map(x => [x.id, x]));
   const parts = {};
-  p.data.forEach(r => { (parts[r.job_id] = parts[r.job_id] || []).push(byId[r.member_id] ? byId[r.member_id].name : "?"); });
+  p.data.forEach(r => { (parts[r.job_id] = parts[r.job_id] || []).push(r.member_id && byId[r.member_id] ? byId[r.member_id].name : (r.guest_name || "?")); });
   CACHE = {
     members: m.data,
     jobs: j.data.map(x => ({ ...x, participants: parts[x.id] || [] })),
-    claims: c.data.map(x => ({ ...x, member_name: byId[x.member_id] ? byId[x.member_id].name : "?" })),
+    claims: c.data.map(x => ({ ...x, member_name: x.member_id && byId[x.member_id] ? byId[x.member_id].name : (x.guest_name || "?") })),
     pool: t.data,
   };
 }
@@ -87,17 +87,11 @@ async function ensureMember(name, role = "member") {
   return m;
 }
 function crimeName(id) { const t = CRIME_TYPES.find(x => x.id === Number(id)); return t ? `${t.category} ${t.name}` : "-"; }
-function memberSelectHTML(field, placeholder, allowNew) {
-  const act = CACHE.members.filter(m => m.is_active !== false && m.role !== "guest");
-  if (!act.length) return `<input name="${field}" placeholder="${placeholder}" />`;
-  return `<select name="${field}"><option value="">名前を選択</option>${act.map(m => `<option value="${esc(m.name)}">${esc(m.name)}（${esc(m.role)}）</option>`).join("")}</select>` + (allowNew ? `
-  <input name="new${field}" placeholder="新規の場合は入力" style="margin-top:8px;" />` : "");
-}
-async function resolveMember(name, role = "member") {
-  const m = CACHE.members.find(x => x.name === name);
-  if (m) return m;
-  if (!currentUser()) return ensureMember(name, "guest");
-  return ensureMember(name, role);
+function memberSelectHTML(field, placeholder) {
+  const act = CACHE.members.filter(m => m.is_active !== false && ["boss", "underboss", "member"].includes(m.role));
+  if (!currentUser() || !act.length) return `<input name="${field}" placeholder="${placeholder}" />`;
+  return `<select name="${field}"><option value="">名前を選択</option>${act.map(m => `<option value="${esc(m.name)}">${esc(m.name)}（${esc(m.role)}）</option>`).join("")}</select>
+  <input name="new${field}" placeholder="新規の場合は入力" style="margin-top:8px;" />`;
 }
 function statusBadge(s) {
   const cls = s === "補填完了" || s === "補填済み" ? "b-done" : s === "精算中" || s === "申請中" ? "b-progress" : "b-open";
@@ -123,8 +117,12 @@ function setChrome(route) {
   const btn = document.getElementById("loginBtn");
   btn.textContent = isBoss() ? "login中" : "LOGIN";
   btn.classList.toggle("on", isBoss());
-  document.querySelectorAll("[data-nav]").forEach(a => a.classList.toggle("active", a.dataset.nav === route));
-  document.getElementById("bossNav").style.display = isBoss() ? "" : "none";
+  document.querySelectorAll("[data-nav]").forEach(a => {
+    const nv = a.dataset.nav;
+    a.classList.toggle("active", nv === route);
+    if (nv === "boss") a.style.display = isBoss() ? "" : "none";
+    else if (nv !== "jobs") a.style.display = currentUser() ? "" : "none";
+  });
 }
 
 // ---------- actions ----------
@@ -148,20 +146,18 @@ window.joinJob = async (jobId, e) => {
   e.preventDefault();
   const fd0 = new FormData(e.target);
   const name = ((fd0.get("newname") || "").trim() || (fd0.get("name") || "").trim());
-  if (!name) return alert("名前を選択または入力");
-  const m = await resolveMember(name, "mercenary");
-  if (!m) return;
-  if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
+  if (!name) return alert("名前を入力");
+  const m = CACHE.members.find(x => x.name === name);
+  if (m && m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
   if (!j) return;
   if (j.status === "補填完了" && !isBoss()) return alert("この枠は完了済みです");
+  if (j.participants.includes(name)) return alert("参加済みです");
   if (MODE === "remote") {
-    const r = await sb().from("job_participants").upsert({ job_id: jobId, member_id: m.id }, { onConflict: "job_id,member_id" });
+    const r = await sb().from("job_participants").insert({ job_id: jobId, member_id: m ? m.id : null, guest_name: m ? null : name });
     if (r.error) return alert("参加失敗: " + r.error.message);
-
   }
-  if (!j.participants.includes(name)) j.participants.push(name);
-
+  j.participants.push(name);
   if (MODE === "local") persistLocal();
   render();
 };
@@ -169,25 +165,36 @@ window.submitClaim = async (jobId, e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
   const name = ((fd.get("newname") || "").trim() || (fd.get("name") || "").trim());
-  if (!name) return alert("名前を選択または入力");
+  if (!name) return alert("名前を入力");
   const cur = CACHE.claims.find(c => String(c.job_id) === String(jobId) && c.member_name === name);
   if (cur && cur.status === "補填済み" && !isBoss()) return alert("補填済みのため編集不可（ボスに連絡）");
   const jobSt = CACHE.jobs.find(x => String(x.id) === String(jobId));
   if (jobSt && jobSt.status === "補填完了" && !isBoss()) return alert("この枠は完了済みです（ボスに連絡）");
-  const m = await resolveMember(name);
-  if (!m) return;
-  if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
+  const m = CACHE.members.find(x => x.name === name);
+  if (m && m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const medic_used = fd.get("medic_used") === "on";
-  const row = { job_id: jobId, member_id: m.id, fine_amount: Number(fd.get("fine_amount")) || 0, medic_used, medic_cost: medic_used ? (Number(fd.get("medic_cost")) || 0) : 0, other_cost: Number(fd.get("other_cost")) || 0, status: "申請中", note: fd.get("note") || "" };
+  const row = { job_id: jobId, member_id: m ? m.id : null, guest_name: m ? null : name, fine_amount: Number(fd.get("fine_amount")) || 0, medic_used, medic_cost: medic_used ? (Number(fd.get("medic_cost")) || 0) : 0, other_cost: Number(fd.get("other_cost")) || 0, status: "申請中", note: fd.get("note") || "" };
+  const sel = "id,job_id,member_id,guest_name,fine_amount,medic_used,medic_cost,other_cost,status,note,updated_at";
   if (MODE === "remote") {
-    const r = await sb().from("expense_claims").upsert(row, { onConflict: "job_id,member_id" }).select("id,job_id,member_id,fine_amount,medic_used,medic_cost,other_cost,status,note,updated_at").single();
-    if (r.error) return alert("申告失敗: " + r.error.message);
-    const i = CACHE.claims.findIndex(c => String(c.job_id) === String(jobId) && c.member_name === name);
-    const rec = { ...r.data, member_name: name };
-    if (i >= 0) CACHE.claims[i] = rec; else CACHE.claims.push(rec);
-    await sb().from("job_participants").upsert({ job_id: jobId, member_id: m.id }, { onConflict: "job_id,member_id" });
+    let rec;
+    if (cur) {
+      const r = await sb().from("expense_claims").update(row).eq("id", cur.id).select(sel).single();
+      if (r.error) return alert("申告失敗: " + r.error.message);
+      rec = { ...r.data, member_name: name };
+      const i = CACHE.claims.findIndex(c => String(c.id) === String(cur.id));
+      CACHE.claims[i] = rec;
+    } else {
+      const r = await sb().from("expense_claims").insert(row).select(sel).single();
+      if (r.error) return alert("申告失敗: " + r.error.message);
+      rec = { ...r.data, member_name: name };
+      CACHE.claims.push(rec);
+    }
     const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
-    if (j && !j.participants.includes(name)) j.participants.push(name);
+    if (j && !j.participants.includes(name)) {
+      const pr = await sb().from("job_participants").insert({ job_id: jobId, member_id: m ? m.id : null, guest_name: m ? null : name });
+      if (pr.error) return alert("参加登録失敗: " + pr.error.message);
+      j.participants.push(name);
+    }
   } else {
     const rec = { id: cur ? cur.id : uid(), ...row, member_name: name, updated_at: new Date().toISOString() };
     const i = CACHE.claims.findIndex(c => String(c.job_id) === String(jobId) && c.member_name === name);
@@ -351,6 +358,8 @@ window.leaveJob = async (jobId, fixedName) => {
       const r = await sb().from("job_participants").delete().eq("job_id", jobId).eq("member_id", m.id);
       if (r.error) return alert("離脱失敗: " + r.error.message);
     }
+    const g = await sb().from("job_participants").delete().eq("job_id", jobId).eq("guest_name", who);
+    if (g.error) return alert("離脱失敗: " + g.error.message);
   }
   j.participants = j.participants.filter(p => p !== who);
   if (MODE === "local") persistLocal();
@@ -482,6 +491,7 @@ function canViewJob(j) {
   return !!n && (j.participants.includes(n) || CACHE.claims.some(c => String(c.job_id) === String(j.id) && c.member_name === n));
 }
 window.setViewer = (v) => { if (v) localStorage.setItem("gang_viewer", v); else localStorage.removeItem("gang_viewer"); render(); };
+window.setViewerText = (e) => { e.preventDefault(); setViewer(((new FormData(e.target).get("v") || "").trim())); };
 window.loginUser = async (e) => {
   e.preventDefault();
   if (MODE !== "remote") return alert("共有DBに接続できていないためログインできません");
@@ -553,10 +563,9 @@ window.joinAsMe = async (jobId) => {
   const m = CACHE.members.find(x => x.name === u.name);
   if (m && m.is_active === false) return alert("無効化されています（ボスに連絡）");
   if (MODE === "remote") {
-    const mid = m ? m.id : (await ensureMember(u.name, "mercenary")).id;
-    const r = await sb().from("job_participants").upsert({ job_id: jobId, member_id: mid }, { onConflict: "job_id,member_id" });
+    const mid = m ? m.id : (await ensureMember(u.name)).id;
+    const r = await sb().from("job_participants").insert({ job_id: jobId, member_id: mid });
     if (r.error) return alert("参加失敗: " + r.error.message);
-
   }
   if (!j.participants.includes(u.name)) j.participants.push(u.name);
 
@@ -739,19 +748,20 @@ function targetMatrix() {
 }
 function viewJobs() {
   const q = jobSearch;
-  const jobs = CACHE.jobs.filter(j => (!crimeFilter || Number(j.crime_type_id) === crimeFilter) && (!statusFilter || j.status === statusFilter) && (!q || (crimeName(j.crime_type_id) + " " + (j.location || "") + " " + (j.memo || "")).includes(q)) && canViewJob(j));
+  const jobs = CACHE.jobs.filter(j => (!crimeFilter || Number(j.crime_type_id) === crimeFilter) && (!statusFilter || j.status === statusFilter) && (!q || (crimeName(j.crime_type_id) + " " + (j.location || "") + " " + (j.memo || "") + " " + j.participants.join(" ")).includes(q)) && canViewJob(j));
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Targets</h2>${targetMatrix()}</section>
   <section class="tech-section"><span class="sec-num">02</span><h2>Operations</h2>
   <div class="data-panel" style="margin-bottom:12px;"><span class="panel-label">You — あなた</span>
     <div class="field"><label>あなたの名前（無記名可）</label>
     <select onchange="setViewer(this.value)">
       <option value="">無記名</option>
-      ${CACHE.members.filter(m => m.is_active !== false && m.role !== "guest").map(m => `<option value="${esc(m.name)}" ${viewerName() === m.name ? "selected" : ""}>${esc(m.name)}（${esc(m.role)}）</option>`).join("")}
+      ${CACHE.members.filter(m => m.is_active !== false && ["boss", "underboss", "member"].includes(m.role)).map(m => `<option value="${esc(m.name)}" ${viewerName() === m.name ? "selected" : ""}>${esc(m.name)}（${esc(m.role)}）</option>`).join("")}
     </select></div>
+    <form onsubmit="setViewerText(event)" style="display:flex;gap:8px;margin-top:8px;"><input name="v" placeholder="名簿にない名前" value="${esc(["boss", "underboss", "member"].includes(viewerRole()) || !viewerName() ? "" : viewerName())}" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);flex:1;" /><button class="btn-ghost">表示</button></form>
     <div class="sub" style="margin-top:8px;font-size:12px;">member以外は募集中の枠と自分の参加枠のみ表示されます</div>
   </div>
   <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-    <form onsubmit="setJobSearch(event)" style="display:flex;gap:8px;"><input name="q" placeholder="検索（犯罪・場所・メモ）" value="${esc(jobSearch)}" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);" /><button class="btn-ghost">検索</button></form>
+    <form onsubmit="setJobSearch(event)" style="display:flex;gap:8px;"><input name="q" placeholder="検索（犯罪・場所・メモ・参加者）" value="${esc(jobSearch)}" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);" /><button class="btn-ghost">検索</button></form>
     <select onchange="setStatusFilter(this.value)" style="background:#fff;border:1px solid var(--tech-blue);padding:8px;color:var(--tech-dark);">
       <option value="">全部</option>${["参加募集中", "精算中", "補填完了"].map(s => `<option ${statusFilter === s ? "selected" : ""}>${s}</option>`).join("")}
     </select>
@@ -830,11 +840,11 @@ function viewJobDetail(id) {
       ${me ? (j.participants.includes(me.name)
         ? `<p>${esc(me.name)}として参加中です</p><div style="margin-top:12px;"><button onclick="leaveJob('${j.id}',this.dataset.n)" data-n="${esc(me.name)}" class="btn-ghost">離脱する</button></div>`
         : `<p>${esc(me.name)}として参加します</p><div style="margin-top:12px;"><button onclick="joinAsMe('${j.id}')" class="btn-primary">参加</button></div>`)
-      : `<form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label>${memberSelectHTML("name", "参加する名前", true)}</div>
+      : `<form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label>${memberSelectHTML("name", "参加する名前")}</div>
       <div style="margin-top:12px;"><button class="btn-primary">参加</button></div></form>`}</div>
     <div class="data-panel"><span class="panel-label">Claim</span>
       <form onsubmit="submitClaim('${j.id}',event)" class="tech-form">
-        <div class="field"><label>自分の名前</label>${me ? `<p>${esc(me.name)}として申告します</p><input type="hidden" name="name" value="${esc(me.name)}" />` : memberSelectHTML("name", "自分の名前", true)}</div>
+        <div class="field"><label>自分の名前</label>${me ? `<p>${esc(me.name)}として申告します</p><input type="hidden" name="name" value="${esc(me.name)}" />` : memberSelectHTML("name", "自分の名前")}</div>
         <div class="form-row c3" style="margin-top:12px;">
           <div class="field"><label>罰金（万）</label><input name="fine_amount" type="number" min="0" value="0" /></div>
           <div class="field"><label>個人医代（万）</label><input name="medic_cost" type="number" min="0" value="0" /></div>
@@ -871,16 +881,18 @@ function viewPool() {
   ${txs.map(t => `<tr><td>${statusBadge(t.type === "入金" ? "申請中" : "補填済み")} ${esc(t.type)}</td><td><b>${man(t.amount)}</b></td><td>${esc(t.memo || "")}</td><td style="font-size:12px;">${esc((t.created_at || "").slice(0, 16))}</td><td><button onclick="deleteTx('${t.id}')" class="btn-ghost" style="padding:4px 12px;font-size:12px;">削除</button></td></tr>`).join("") || '<tr><td colspan="5">履歴なし</td></tr>'}</table></section>`;
 }
 function viewMembers() {
+  if (!currentUser()) return `<section class="tech-section"><span class="sec-num">01</span><h2>Members</h2>
+  <div class="lock-note">名簿を見るにはログインが必要です。右上からログインしてください。</div></section>`;
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Members</h2>
   ${isBoss() ? `<div class="data-panel"><span class="panel-label">Add Member</span>
     <form onsubmit="addMember(event)" class="tech-form"><div class="form-row c2">
       <div class="field"><label>名前</label><input name="name" placeholder="名前" /></div>
-      <div class="field"><label>役職</label><select name="role"><option value="member">構成員</option><option value="mercenary">傭兵</option><option value="guest">ゲスト</option><option value="underboss">アンダーボス</option><option value="boss">ボス</option></select></div></div>
+      <div class="field"><label>役職</label><select name="role"><option value="member">構成員</option><option value="underboss">アンダーボス</option><option value="boss">ボス</option></select></div></div>
       <div style="margin-top:12px;"><button class="btn-primary">追加</button></div></form></div>`
   : `<p class="lock-note">メンバー編集にはloginが必要です</p>`}
   <table class="tech-table" style="margin-top:24px;"><tr><th>NO</th><th>名前</th><th>役職</th><th></th></tr>
-  ${CACHE.members.map((m, i) => `<tr><td class="num">${String(i + 1).padStart(2, "0")}</td><td><b>${esc(m.name)}</b></td>
-    <td>${isBoss() ? `<select onchange="setMemberRole('${m.id}',this.value)" style="background:var(--tech-dark);color:#fff;border:1px solid var(--tech-cyan);padding:4px;">${["member", "mercenary", "guest", "underboss", "boss"].map(r => `<option value="${r}" ${m.role === r ? "selected" : ""}>${r}</option>`).join("")}</select>` : esc(m.role)}</td>
+  ${CACHE.members.filter(m => ["boss", "underboss", "member"].includes(m.role)).map((m, i) => `<tr><td class="num">${String(i + 1).padStart(2, "0")}</td><td><b>${esc(m.name)}</b></td>
+    <td>${isBoss() ? `<select onchange="setMemberRole('${m.id}',this.value)" style="background:var(--tech-dark);color:#fff;border:1px solid var(--tech-cyan);padding:4px;">${["member", "underboss", "boss"].map(r => `<option value="${r}" ${m.role === r ? "selected" : ""}>${r}</option>`).join("")}</select>` : esc(m.role)}</td>
     <td>${isBoss() ? `<button onclick="deleteMember('${m.id}')" class="btn-accent" style="padding:4px 12px;font-size:12px;">削除</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="4">メンバー未登録</td></tr>'}</table></section>`;
 }
 

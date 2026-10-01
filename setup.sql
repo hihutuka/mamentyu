@@ -41,11 +41,18 @@ create table if not exists crime_jobs(
 );
 
 create table if not exists job_participants(
+  id uuid primary key default gen_random_uuid(),
   job_id uuid references crime_jobs(id) on delete cascade,
   member_id uuid references members(id) on delete cascade,
-  joined_at timestamptz default now(),
-  primary key(job_id, member_id)
+  guest_name text,
+  joined_at timestamptz default now()
 );
+alter table job_participants add column if not exists id uuid default gen_random_uuid();
+update job_participants set id = gen_random_uuid() where id is null;
+alter table job_participants drop constraint if exists job_participants_pkey;
+alter table job_participants add primary key (id);
+alter table job_participants alter column member_id drop not null;
+alter table job_participants add column if not exists guest_name text;
 
 create table if not exists expense_claims(
   id uuid primary key default gen_random_uuid(),
@@ -60,6 +67,8 @@ create table if not exists expense_claims(
   updated_at timestamptz default now(),
   unique(job_id, member_id)
 );
+alter table expense_claims alter column member_id drop not null;
+alter table expense_claims add column if not exists guest_name text;
 
 create table if not exists pool_transactions(
   id uuid primary key default gen_random_uuid(),
@@ -80,7 +89,7 @@ ALTER TABLE crime_jobs ADD CONSTRAINT crime_jobs_status_check CHECK (status in (
 ALTER TABLE pool_transactions DROP CONSTRAINT IF EXISTS pool_transactions_type_check;
 ALTER TABLE pool_transactions ADD CONSTRAINT pool_transactions_type_check CHECK (type in ('入金','出金'));
 ALTER TABLE members DROP CONSTRAINT IF EXISTS members_role_check;
-ALTER TABLE members ADD CONSTRAINT members_role_check CHECK (role in ('boss','underboss','member','mercenary','guest'));
+ALTER TABLE members ADD CONSTRAINT members_role_check CHECK (role in ('boss','underboss','member'));
 ALTER TABLE crime_types DROP CONSTRAINT IF EXISTS crime_types_category_check;
 ALTER TABLE crime_types ADD CONSTRAINT crime_types_category_check CHECK (category in ('準大型','大型'));
 
@@ -116,7 +125,7 @@ returns table(id uuid, name text, role text)
 language sql security definer set search_path = public as $$
   select m.id, m.name, m.role from members m
   join member_secrets s on s.member_id = m.id
-  where m.name = p_name and m.is_active is distinct from false and m.role <> 'guest'
+  where m.name = p_name and m.is_active is distinct from false and m.role in ('boss','underboss','member')
     and s.password_hash = md5(s.salt || p_password);
 $$;
 
@@ -141,7 +150,7 @@ begin
   if char_length(p_password) < 4 then raise exception 'short password'; end if;
   perform 1 from members where members.name = btrim(p_name);
   if found then raise exception 'name taken'; end if;
-  insert into members(name, role) values (btrim(p_name), 'mercenary') returning members.id into nid;
+  insert into members(name, role) values (btrim(p_name), 'member') returning members.id into nid;
   insert into member_secrets(member_id, salt, password_hash) values (nid, nsalt, md5(nsalt || p_password));
   return query select m.id, m.name, m.role from members m where m.id = nid;
 end $$;
