@@ -118,7 +118,8 @@ insert into crime_types(category, name, capacity) values
 - [x] push + Pages公開（表示確認済み）
 ### 残り（優先度順）
 - [x] schema.sql適用確認（7件取得OK、Table Editorでも確認済み）
-- [x] Supabase実接続（共有DB化、失敗時は端末保存に自動切替・要動作確認）
+- [x] Supabase実接続（共有DB化、失敗時は端末保存に自動切替）
+- [x] リアルタイム同期（差分パッチ：参加者・申告・残高のみ更新、全画面再描画なし。新規枠・状態変化等はスクロール維持の全体更新）
 - [ ] RLS本番厳格化 + Supabase Auth化（見送り：合言葉方式のまま運用）
 - [x] 欠け機能：枠編集・削除、参加離脱、残高不足警告、メンバー別/月別集計、CSV出力、メンバー無効化・役職変更
 - [x] Phase2-Discord通知（枠作成・申告・補填・一括補填、端末別URL上書き可。本サーバー移行後にURL差し替え要）
