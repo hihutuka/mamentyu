@@ -513,7 +513,7 @@ function myPanel() {
   const unpaid = mine.filter(c => c.status !== "補填済み");
   const joined = CACHE.jobs.filter(j => j.participants.includes(u.name));
   return `<div class="data-panel" style="margin-bottom:12px;"><span class="panel-label">My — ${esc(u.name)}</span>
-  <div class="big-num">${man(unpaid.reduce((s, c) => s + claimTotal(c), 0))}</div>
+  <div class="big-num" data-my-unpaid>${man(unpaid.reduce((s, c) => s + claimTotal(c), 0))}</div>
   <div class="sub">あなたの補填待ち（${unpaid.length}件）／ 申告${mine.length}件 ／ 参加${joined.length}枠</div>
   <form onsubmit="changePassword(event)" class="tech-form" style="margin-top:12px;"><div class="form-row c2">
     <div class="field"><label>今のパスワード</label><input name="oldpw" type="text" autocomplete="off" /></div>
@@ -663,7 +663,7 @@ function joiningSection() {
     return `<a href="#/jobs/${j.id}" class="tech-card">
       <div class="card-top"><span class="diag-num">${String(i + 1).padStart(2, "0")}</span>${statusBadge(j.status)}</div>
       <div class="card-title">${esc(crimeName(j.crime_type_id))}</div>
-      <div class="card-meta">${esc((j.occurred_at || "").slice(0, 16))} / ${c ? (c.status === "補填済み" ? "補填済み " + man(claimTotal(c)) : "申告済み・補填待ち " + man(claimTotal(c))) : "未申告"}</div>
+      <div class="card-meta">${esc((j.occurred_at || "").slice(0, 16))} / <span data-jmeta="${j.id}">${c ? (c.status === "補填済み" ? "補填済み " + man(claimTotal(c)) : "申告済み・補填待ち " + man(claimTotal(c))) : "未申告"}</span></div>
     </a>`;
   }).join("") || '<p class="sub">参加中の犯罪はありません</p>'}</div>
   ${list.length > 3 ? `<div style="margin-top:12px;"><button onclick="toggleJoining()" class="btn-ghost">${showAllJoining ? "閉じる" : `すべて見る（${list.length}件）`}</button></div>` : ""}</section>`;
@@ -675,7 +675,7 @@ function recruitCard(j, i) {
   return `<div class="tech-card">
     <div class="card-top"><span class="diag-num">${String(i + 1).padStart(2, "0")}</span>${statusBadge(j.status)}</div>
     <div class="card-title">${esc(crimeName(j.crime_type_id))}</div>
-    <div class="card-meta">${esc((j.occurred_at || "").slice(0, 16))} / 参加${j.participants.length}人${t ? " / 定員" + t.capacity + "人" : ""}</div>
+    <div class="card-meta">${esc((j.occurred_at || "").slice(0, 16))} / 参加<span data-pcount="${j.id}">${j.participants.length}</span>人${t ? " / 定員" + t.capacity + "人" : ""}</div>
     <div style="margin-top:12px;">${joined ? `<span class="badge b-paid">参加ずみ</span>` : `<button onclick="joinAsMe('${j.id}')" class="btn-primary">参加</button>`}</div>
   </div>`;
 }
@@ -691,7 +691,7 @@ function bossFull() {
   const remindRows = CACHE.jobs.filter(j => j.status !== "補填完了").map(j => ({ j, missing: j.participants.filter(p => !CACHE.claims.some(c => String(c.job_id) === String(j.id) && c.member_name === p)) })).filter(x => x.missing.length);
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Dashboard</h2>${warn}
   <div class="grid grid-3">
-    <div class="data-panel"><span class="panel-label">Pool Balance</span><div class="big-num">${man(poolBalance())}</div><div class="sub">プール残高</div></div>
+    <div class="data-panel"><span class="panel-label">Pool Balance</span><div class="big-num" data-balance>${man(poolBalance())}</div><div class="sub">プール残高</div></div>
     <div class="data-panel"><span class="panel-label">Unpaid</span><div class="big-num">${unpaid.length}件 / ${man(unpaidSum)}</div><div class="sub">未補填の申告</div></div>
     <div class="data-panel"><span class="panel-label">Monthly Out</span><div class="big-num">${man(monthSum)}</div><div class="sub">今月の出金</div></div></div></section>
   <section class="tech-section"><span class="sec-num">02</span><h2>Open Operations</h2>
@@ -718,7 +718,7 @@ function jobCard(j, i) {
   return `<a href="#/jobs/${j.id}" class="tech-card">
     <div class="card-top"><span class="diag-num">${String(i + 1).padStart(2, "0")}</span>${statusBadge(j.status)}</div>
     <div class="card-title">${esc(crimeName(j.crime_type_id))}</div>
-    <div class="card-meta">${esc((j.occurred_at || "").slice(0, 16))} / 参加${j.participants.length}人 / 未補填${unpaid}件</div>
+    <div class="card-meta">${esc((j.occurred_at || "").slice(0, 16))} / 参加<span data-pcount="${j.id}">${j.participants.length}</span>人 / 未補填<span data-uccount="${j.id}">${unpaid}</span>件</div>
     <div style="margin-top:8px;"><span class="chip">${esc(t ? t.category : "")}</span><span class="chip">定員${t ? t.capacity : "-"}人</span></div>
   </a>`;
 }
@@ -776,7 +776,13 @@ function hexProgress(j, claims) {
     { n: "04", l: "補填", done: allPaid },
   ];
   return `<div class="hex-progress"><div class="hex-row">${steps.map(s =>
-    `<div class="hex-step ${s.done ? "done" : ""}"><div class="hex">${s.n}</div><div class="hex-label">${s.l}</div></div>`).join("")}</div></div>`;
+    `<div class="hex-step ${s.done ? "done" : ""}" data-hex="${j.id}-${s.n}"><div class="hex">${s.n}</div><div class="hex-label">${s.l}</div></div>`).join("")}</div></div>`;
+}
+function claimRowHTML(c, i) {
+  return `<tr><td class="num">${String(i + 1).padStart(2, "0")}</td><td><b>${esc(c.member_name)}</b></td>
+    <td style="font-size:12px;">罰金${man(c.fine_amount)} / 個人医${c.medic_used ? man(c.medic_cost) : "なし"} / 他${man(c.other_cost)}</td>
+    <td><b>${man(claimTotal(c))}</b></td><td>${statusBadge(c.status)}</td>
+    <td>${c.status !== "補填済み" && isBoss() ? `<button onclick="markPaid('${c.id}')" class="btn-accent" style="padding:6px 12px;font-size:12px;">補填済み</button> <button onclick="deleteClaim('${c.id}')" class="btn-ghost" style="padding:6px 12px;font-size:12px;">削除</button>` : ""}</td></tr>`;
 }
 function viewJobDetail(id) {
   const j = CACHE.jobs.find(x => String(x.id) === String(id));
@@ -789,7 +795,7 @@ function viewJobDetail(id) {
   <div class="data-panel"><span class="panel-label">Operation Detail</span>
     <div>${statusBadge(j.status)} <span class="card-meta">${esc(j.occurred_at || "")} / ${esc(j.location || "")} / ${esc(j.memo || "")}</span></div>
     ${hexProgress(j, claims)}
-    <div style="margin-top:8px;">${j.participants.map(p => `<span class="chip">${esc(p)}</span>`).join("") || '<span class="sub">参加者なし</span>'}
+    <div style="margin-top:8px;"><span data-parts="${j.id}">${j.participants.map(p => `<span class="chip">${esc(p)}</span>`).join("") || '<span class="sub">参加者なし</span>'}</span>
     ${j.participants.length ? `<button onclick="leaveJob('${j.id}')" class="btn-ghost" style="padding:4px 12px;font-size:12px;margin-left:8px;">離脱する</button>` : ""}</div>
     ${isBoss() && j.status === "精算中" ? `<div style="margin-top:12px;"><button onclick="markAllPaid('${j.id}')" class="btn-accent">全員を一括補填済みにする</button></div>` : ""}
     ${canManageJob(j) && j.status === "参加募集中" ? `<div style="margin-top:12px;"><button onclick="closeRecruit('${j.id}')" class="btn-accent">募集を締め切る</button></div>` : ""}
@@ -831,11 +837,8 @@ function viewJobDetail(id) {
       </form></div>
   </div></section>
   <section class="tech-section"><span class="sec-num">03</span><h2>Claims (${claims.length})</h2>
-  <table class="tech-table"><tr><th>NO</th><th>名前</th><th>内訳</th><th>合計</th><th>状態</th><th></th></tr>
-  ${claims.map((c, i) => `<tr><td class="num">${String(i + 1).padStart(2, "0")}</td><td><b>${esc(c.member_name)}</b></td>
-    <td style="font-size:12px;">罰金${man(c.fine_amount)} / 個人医${c.medic_used ? man(c.medic_cost) : "なし"} / 他${man(c.other_cost)}</td>
-    <td><b>${man(claimTotal(c))}</b></td><td>${statusBadge(c.status)}</td>
-    <td>${c.status !== "補填済み" && isBoss() ? `<button onclick="markPaid('${c.id}')" class="btn-accent" style="padding:6px 12px;font-size:12px;">補填済み</button> <button onclick="deleteClaim('${c.id}')" class="btn-ghost" style="padding:6px 12px;font-size:12px;">削除</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="6">申告なし</td></tr>'}</table></section>`
+  <table class="tech-table"><thead><tr><th>NO</th><th>名前</th><th>内訳</th><th>合計</th><th>状態</th><th></th></tr></thead>
+  <tbody data-claims="${j.id}">${claims.map(claimRowHTML).join("") || '<tr><td colspan="6">申告なし</td></tr>'}</tbody></table></section>`
   + (canManageJob(j) ? `<div style="text-align:center;margin:48px 0 24px;"><button onclick="deleteJob('${j.id}')" style="background:#D63031;color:#fff;border:2px solid #7A0E0E;font-weight:700;padding:12px 48px;cursor:pointer;font-size:14px;letter-spacing:2px;">枠を削除</button></div>` : "");
 }
 function viewPool() {
@@ -843,7 +846,7 @@ function viewPool() {
   <div class="lock-note">プールを開くにはログインが必要です。右上からログインしてください。</div></section>`;
   const txs = CACHE.pool.slice().reverse();
   return `<section class="tech-section"><span class="sec-num">01</span><h2>Pool</h2>
-  <div class="data-panel"><span class="panel-label">Balance</span><div class="big-num">${isBoss() ? man(poolBalance()) : "***"}</div><div class="sub">プール残高（万単位）</div>
+  <div class="data-panel"><span class="panel-label">Balance</span><div class="big-num" data-balance>${isBoss() ? man(poolBalance()) : "***"}</div><div class="sub">プール残高（万単位）</div>
   <form onsubmit="adjustBalance(event)" class="tech-form" style="margin-top:12px;"><div class="field"><label>正しい残高（万）— 差額を調整記録します</label><input name="target" type="number" min="0" placeholder="例: 5000" /></div>
   <div style="margin-top:8px;"><button class="btn-ghost">残高を合わせる</button></div></form></div>
   ${isBoss() ? `<div class="data-panel" style="margin-top:24px;"><span class="panel-label">In / Out</span>
@@ -903,30 +906,136 @@ document.getElementById("logoutBtn").onclick = () => { logoutUser(); };
 if (!location.hash) location.hash = "#/jobs";
 let rtTimer = null;
 let lastSig = "";
-async function onRemoteChange() {
+let pendingDeltas = [];
+function memberNameOf(id) { const m = CACHE.members.find(x => String(x.id) === String(id)); return m ? m.name : null; }
+function patchHex(jobId) {
+  const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
+  if (!j) return;
+  const claims = CACHE.claims.filter(c => String(c.job_id) === String(jobId));
+  const st = { "01": true, "02": j.participants.length > 0, "03": claims.length > 0, "04": claims.length > 0 && claims.every(c => c.status === "補填済み") };
+  Object.keys(st).forEach(k => document.querySelectorAll(`[data-hex="${jobId}-${k}"]`).forEach(el => el.classList.toggle("done", !!st[k])));
+}
+function patchParticipants(jobId) {
+  const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
+  if (!j) return;
+  document.querySelectorAll(`[data-parts="${jobId}"]`).forEach(el => {
+    el.innerHTML = j.participants.map(p => `<span class="chip">${esc(p)}</span>`).join("") || '<span class="sub">参加者なし</span>';
+  });
+  document.querySelectorAll(`[data-pcount="${jobId}"]`).forEach(el => { el.textContent = j.participants.length; });
+  patchHex(jobId);
+}
+function patchMyUnpaid() {
+  const me = currentUser();
+  if (!me) return;
+  const mine = CACHE.claims.filter(c => c.member_name === me.name && c.status !== "補填済み");
+  document.querySelectorAll("[data-my-unpaid]").forEach(el => { el.textContent = man(mine.reduce((s, c) => s + claimTotal(c), 0)); });
+}
+function patchClaims(jobId) {
+  const tb = document.querySelector(`[data-claims="${jobId}"]`);
+  if (tb) {
+    const claims = CACHE.claims.filter(c => String(c.job_id) === String(jobId));
+    tb.innerHTML = claims.map(claimRowHTML).join("") || '<tr><td colspan="6">申告なし</td></tr>';
+  }
+  const me = currentUser();
+  document.querySelectorAll(`[data-jmeta="${jobId}"]`).forEach(el => {
+    const c = CACHE.claims.find(x => String(x.job_id) === String(jobId) && me && x.member_name === me.name);
+    el.textContent = c ? (c.status === "補填済み" ? "補填済み " + man(claimTotal(c)) : "申告済み・補填待ち " + man(claimTotal(c))) : "未申告";
+  });
+  const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
+  if (j) {
+    const unpaid = CACHE.claims.filter(c => String(c.job_id) === String(jobId) && c.status !== "補填済み").length;
+    document.querySelectorAll(`[data-uccount="${jobId}"]`).forEach(el => { el.textContent = unpaid; });
+  }
+  patchHex(jobId);
+  patchMyUnpaid();
+}
+function patchBalance() {
+  document.querySelectorAll("[data-balance]").forEach(el => { el.textContent = man(poolBalance()); });
+  const chip = document.getElementById("poolBadge");
+  if (chip && chip.style.display !== "none") chip.innerHTML = `POOL <b>${man(poolBalance())}</b>`;
+}
+function onBossRoute() { return (location.hash || "").startsWith("#/boss"); }
+function applyDelta(p) {
+  const t = p.table, e = p.eventType, n = p.new || {}, o = p.old || {};
+  if (t === "job_participants") {
+    const jobId = n.job_id || o.job_id, mid = n.member_id || o.member_id;
+    const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
+    const nm = memberNameOf(mid);
+    if (!j || !nm) return false;
+    if (e === "INSERT" && !j.participants.includes(nm)) j.participants.push(nm);
+    if (e === "DELETE") j.participants = j.participants.filter(x => x !== nm);
+    patchParticipants(jobId);
+    return true;
+  }
+  if (t === "expense_claims") {
+    if (onBossRoute()) return false;
+    if (e === "DELETE") {
+      const gone = CACHE.claims.find(c => String(c.id) === String(o.id));
+      const jobId = gone ? gone.job_id : o.job_id;
+      CACHE.claims = CACHE.claims.filter(c => String(c.id) !== String(o.id));
+      patchClaims(jobId);
+      patchMyUnpaid();
+      return true;
+    }
+    const nm = memberNameOf(n.member_id);
+    if (!nm) return false;
+    const rec = { ...n, member_name: nm };
+    const i = CACHE.claims.findIndex(c => String(c.id) === String(n.id));
+    if (i >= 0) CACHE.claims[i] = rec; else CACHE.claims.push(rec);
+    patchClaims(n.job_id);
+    return true;
+  }
+  if (t === "pool_transactions") {
+    if (e === "DELETE") CACHE.pool = CACHE.pool.filter(x => String(x.id) !== String(o.id));
+    else {
+      const i = CACHE.pool.findIndex(x => String(x.id) === String(n.id));
+      if (i >= 0) CACHE.pool[i] = n; else CACHE.pool.push(n);
+    }
+    patchBalance();
+    if ((location.hash || "").startsWith("#/pool")) return false;
+    return true;
+  }
+  return false;
+}
+async function fullSync() {
   if (MODE !== "remote") return;
-  if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  try {
+    await pullRemote();
+    const sig = JSON.stringify(CACHE);
+    if (sig === lastSig) return;
+    render();
+  } catch (e) { console.warn(e); }
+}
+function scheduleFull() {
   clearTimeout(rtTimer);
-  rtTimer = setTimeout(async () => {
-    try {
-      await pullRemote();
-      const sig = JSON.stringify(CACHE);
-      if (sig === lastSig) return;
-      render();
-    } catch (e) { console.warn(e); }
-  }, 1200);
+  rtTimer = setTimeout(fullSync, 1200);
+}
+function queueDelta(payload) {
+  if (MODE !== "remote") return;
+  if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { scheduleFull(); return; }
+  pendingDeltas.push(payload);
+  clearTimeout(rtTimer);
+  rtTimer = setTimeout(flushDeltas, 600);
+}
+async function flushDeltas() {
+  const batch = pendingDeltas; pendingDeltas = [];
+  let needFull = false;
+  for (const p of batch) { if (!applyDelta(p)) { needFull = true; break; } }
+  if (needFull) { fullSync(); return; }
+  lastSig = JSON.stringify(CACHE);
 }
 function subscribeRealtime() {
   if (!sb() || MODE !== "remote") return;
   try {
     sb().channel("gang")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crime_jobs" }, onRemoteChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "job_participants" }, onRemoteChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "expense_claims" }, onRemoteChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "pool_transactions" }, onRemoteChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "members" }, onRemoteChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crime_jobs" }, queueDelta)
+      .on("postgres_changes", { event: "*", schema: "public", table: "job_participants" }, queueDelta)
+      .on("postgres_changes", { event: "*", schema: "public", table: "expense_claims" }, queueDelta)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pool_transactions" }, queueDelta)
+      .on("postgres_changes", { event: "*", schema: "public", table: "members" }, queueDelta)
       .subscribe();
   } catch (e) { console.warn("realtime failed", e); }
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) onRemoteChange(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleFull(); });
+document.addEventListener("focusout", (e) => { if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) fullSync(); });
 boot().then(() => { render(); subscribeRealtime(); });
