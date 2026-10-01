@@ -108,17 +108,14 @@ drop policy if exists open_all on expense_claims; create policy open_all on expe
 drop policy if exists open_all on pool_transactions; create policy open_all on pool_transactions for all to anon, authenticated using (true) with check (true);
 
 -- ログイン基盤（拡張不要：md5+salt方式、ハッシュは関数経由のみで照合）
-drop function if exists verify_member(text, text);
-drop function if exists change_own_password(uuid, text, text);
-drop function if exists signup_member(text, text);
-drop table if exists member_secrets;
-
-create table member_secrets(
+-- 再実行しても既存パスワードは保持される
+create table if not exists member_secrets(
   member_id uuid primary key references members(id) on delete cascade,
   salt text not null,
   password_hash text not null,
   updated_at timestamptz default now()
 );
+alter table member_secrets add column if not exists salt text;
 
 create or replace function verify_member(p_name text, p_password text)
 returns table(id uuid, name text, role text)
