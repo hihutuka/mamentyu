@@ -87,11 +87,17 @@ async function ensureMember(name, role = "member") {
   return m;
 }
 function crimeName(id) { const t = CRIME_TYPES.find(x => x.id === Number(id)); return t ? `${t.category} ${t.name}` : "-"; }
-function memberSelectHTML(field, placeholder) {
+function memberSelectHTML(field, placeholder, allowNew) {
   const act = CACHE.members.filter(m => m.is_active !== false);
   if (!act.length) return `<input name="${field}" placeholder="${placeholder}" />`;
-  return `<select name="${field}"><option value="">名前を選択</option>${act.map(m => `<option value="${esc(m.name)}">${esc(m.name)}（${esc(m.role)}）</option>`).join("")}</select>
-  <input name="new${field}" placeholder="新規の場合は入力" style="margin-top:8px;" />`;
+  return `<select name="${field}"><option value="">名前を選択</option>${act.map(m => `<option value="${esc(m.name)}">${esc(m.name)}（${esc(m.role)}）</option>`).join("")}</select>` + (allowNew ? `
+  <input name="new${field}" placeholder="新規の場合は入力" style="margin-top:8px;" />` : "");
+}
+async function resolveMember(name, role = "member") {
+  const m = CACHE.members.find(x => x.name === name);
+  if (m) return m;
+  if (!currentUser()) { alert("未登録の名前です。ログインまたは新規作成してください"); return null; }
+  return ensureMember(name, role);
 }
 function statusBadge(s) {
   const cls = s === "補填完了" || s === "補填済み" ? "b-done" : s === "精算中" || s === "申請中" ? "b-progress" : "b-open";
@@ -143,7 +149,8 @@ window.joinJob = async (jobId, e) => {
   const fd0 = new FormData(e.target);
   const name = ((fd0.get("newname") || "").trim() || (fd0.get("name") || "").trim());
   if (!name) return alert("名前を選択または入力");
-  const m = await ensureMember(name, "mercenary");
+  const m = await resolveMember(name, "mercenary");
+  if (!m) return;
   if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const j = CACHE.jobs.find(x => String(x.id) === String(jobId));
   if (!j) return;
@@ -167,7 +174,8 @@ window.submitClaim = async (jobId, e) => {
   if (cur && cur.status === "補填済み" && !isBoss()) return alert("補填済みのため編集不可（ボスに連絡）");
   const jobSt = CACHE.jobs.find(x => String(x.id) === String(jobId));
   if (jobSt && jobSt.status === "補填完了" && !isBoss()) return alert("この枠は完了済みです（ボスに連絡）");
-  const m = await ensureMember(name);
+  const m = await resolveMember(name);
+  if (!m) return;
   if (m.is_active === false && !isBoss()) return alert("無効化されています（ボスに連絡）");
   const medic_used = fd.get("medic_used") === "on";
   const row = { job_id: jobId, member_id: m.id, fine_amount: Number(fd.get("fine_amount")) || 0, medic_used, medic_cost: medic_used ? (Number(fd.get("medic_cost")) || 0) : 0, other_cost: Number(fd.get("other_cost")) || 0, status: "申請中", note: fd.get("note") || "" };
@@ -793,7 +801,8 @@ function viewJobDetail(id) {
   return `<a href="#/jobs" style="font-size:12px;">← OPERATIONSへ戻る</a>
   <section class="tech-section" style="margin-top:16px;"><span class="sec-num">01</span><h2>${esc(crimeName(j.crime_type_id))}</h2>
   <div class="data-panel"><span class="panel-label">Operation Detail</span>
-    <div>${statusBadge(j.status)} <span class="card-meta">${esc(j.occurred_at || "")} / ${esc(j.location || "")} / ${esc(j.memo || "")}</span></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><div>${statusBadge(j.status)} <span class="card-meta">${esc(j.occurred_at || "")} / ${esc(j.location || "")} / ${esc(j.memo || "")}</span></div>
+    ${me ? (j.participants.includes(me.name) ? `<span class="badge b-paid">参加しました</span>` : `<button onclick="joinAsMe('${j.id}')" class="btn-primary" style="width:auto;padding:8px 20px;">参加する</button>`) : ""}</div>
     ${hexProgress(j, claims)}
     <div style="margin-top:8px;"><span data-parts="${j.id}">${j.participants.map(p => `<span class="chip">${esc(p)}</span>`).join("") || '<span class="sub">参加者なし</span>'}</span>
     ${j.participants.length ? `<button onclick="leaveJob('${j.id}')" class="btn-ghost" style="padding:4px 12px;font-size:12px;margin-left:8px;">離脱する</button>` : ""}</div>
@@ -821,11 +830,11 @@ function viewJobDetail(id) {
       ${me ? (j.participants.includes(me.name)
         ? `<p>${esc(me.name)}として参加中です</p><div style="margin-top:12px;"><button onclick="leaveJob('${j.id}',this.dataset.n)" data-n="${esc(me.name)}" class="btn-ghost">離脱する</button></div>`
         : `<p>${esc(me.name)}として参加します</p><div style="margin-top:12px;"><button onclick="joinAsMe('${j.id}')" class="btn-primary">参加</button></div>`)
-      : `<form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label>${memberSelectHTML("name", "参加する名前")}</div>
+      : `<form onsubmit="joinJob('${j.id}',event)" class="tech-form"><div class="field"><label>名前</label>${memberSelectHTML("name", "参加する名前", !!currentUser())}</div>
       <div style="margin-top:12px;"><button class="btn-primary">参加</button></div></form>`}</div>
     <div class="data-panel"><span class="panel-label">Claim</span>
       <form onsubmit="submitClaim('${j.id}',event)" class="tech-form">
-        <div class="field"><label>自分の名前</label>${me ? `<p>${esc(me.name)}として申告します</p><input type="hidden" name="name" value="${esc(me.name)}" />` : memberSelectHTML("name", "自分の名前")}</div>
+        <div class="field"><label>自分の名前</label>${me ? `<p>${esc(me.name)}として申告します</p><input type="hidden" name="name" value="${esc(me.name)}" />` : memberSelectHTML("name", "自分の名前", false)}</div>
         <div class="form-row c3" style="margin-top:12px;">
           <div class="field"><label>罰金（万）</label><input name="fine_amount" type="number" min="0" value="0" /></div>
           <div class="field"><label>個人医代（万）</label><input name="medic_cost" type="number" min="0" value="0" /></div>
@@ -876,6 +885,7 @@ function viewMembers() {
 }
 
 let lastHash = "";
+let firstPaint = true;
 function render() {
   const h = location.hash || "#/jobs";
   const y = window.scrollY;
@@ -888,7 +898,11 @@ function render() {
   else if (h.startsWith("#/boss")) { route = "boss"; app.innerHTML = `<div class="fade-in">${viewBoss()}</div>`; }
   else { route = "jobs"; app.innerHTML = `<div class="fade-in">${viewJobs()}</div>`; }
   setChrome(route);
-  if (h !== lastHash) { lastHash = h; window.scrollTo(0, 0); }
+  if (h !== lastHash) {
+    lastHash = h;
+    if (firstPaint) { firstPaint = false; window.scrollTo(0, 0); }
+    else { const top = document.getElementById("app").offsetTop; window.scrollTo(0, Math.max(0, top - 8)); }
+  }
   else { window.scrollTo(0, y); }
   lastSig = JSON.stringify(CACHE);
 }
