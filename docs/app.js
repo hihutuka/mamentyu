@@ -88,7 +88,7 @@ async function ensureMember(name, role = "member") {
 }
 function crimeName(id) { const t = CRIME_TYPES.find(x => x.id === Number(id)); return t ? `${t.category} ${t.name}` : "-"; }
 function memberSelectHTML(field, placeholder, allowNew) {
-  const act = CACHE.members.filter(m => m.is_active !== false);
+  const act = CACHE.members.filter(m => m.is_active !== false && m.role !== "guest");
   if (!act.length) return `<input name="${field}" placeholder="${placeholder}" />`;
   return `<select name="${field}"><option value="">名前を選択</option>${act.map(m => `<option value="${esc(m.name)}">${esc(m.name)}（${esc(m.role)}）</option>`).join("")}</select>` + (allowNew ? `
   <input name="new${field}" placeholder="新規の場合は入力" style="margin-top:8px;" />` : "");
@@ -96,7 +96,7 @@ function memberSelectHTML(field, placeholder, allowNew) {
 async function resolveMember(name, role = "member") {
   const m = CACHE.members.find(x => x.name === name);
   if (m) return m;
-  if (!currentUser()) { alert("未登録の名前です。ログインまたは新規作成してください"); return null; }
+  if (!currentUser()) return ensureMember(name, "guest");
   return ensureMember(name, role);
 }
 function statusBadge(s) {
@@ -746,7 +746,7 @@ function viewJobs() {
     <div class="field"><label>あなたの名前（無記名可）</label>
     <select onchange="setViewer(this.value)">
       <option value="">無記名</option>
-      ${CACHE.members.filter(m => m.is_active !== false).map(m => `<option value="${esc(m.name)}" ${viewerName() === m.name ? "selected" : ""}>${esc(m.name)}（${esc(m.role)}）</option>`).join("")}
+      ${CACHE.members.filter(m => m.is_active !== false && m.role !== "guest").map(m => `<option value="${esc(m.name)}" ${viewerName() === m.name ? "selected" : ""}>${esc(m.name)}（${esc(m.role)}）</option>`).join("")}
     </select></div>
     <div class="sub" style="margin-top:8px;font-size:12px;">member以外は募集中の枠と自分の参加枠のみ表示されます</div>
   </div>
@@ -875,12 +875,12 @@ function viewMembers() {
   ${isBoss() ? `<div class="data-panel"><span class="panel-label">Add Member</span>
     <form onsubmit="addMember(event)" class="tech-form"><div class="form-row c2">
       <div class="field"><label>名前</label><input name="name" placeholder="名前" /></div>
-      <div class="field"><label>役職</label><select name="role"><option value="member">構成員</option><option value="mercenary">傭兵</option><option value="underboss">アンダーボス</option><option value="boss">ボス</option></select></div></div>
+      <div class="field"><label>役職</label><select name="role"><option value="member">構成員</option><option value="mercenary">傭兵</option><option value="guest">ゲスト</option><option value="underboss">アンダーボス</option><option value="boss">ボス</option></select></div></div>
       <div style="margin-top:12px;"><button class="btn-primary">追加</button></div></form></div>`
   : `<p class="lock-note">メンバー編集にはloginが必要です</p>`}
   <table class="tech-table" style="margin-top:24px;"><tr><th>NO</th><th>名前</th><th>役職</th><th></th></tr>
   ${CACHE.members.map((m, i) => `<tr><td class="num">${String(i + 1).padStart(2, "0")}</td><td><b>${esc(m.name)}</b></td>
-    <td>${isBoss() ? `<select onchange="setMemberRole('${m.id}',this.value)" style="background:var(--tech-dark);color:#fff;border:1px solid var(--tech-cyan);padding:4px;">${["member", "mercenary", "underboss", "boss"].map(r => `<option value="${r}" ${m.role === r ? "selected" : ""}>${r}</option>`).join("")}</select>` : esc(m.role)}</td>
+    <td>${isBoss() ? `<select onchange="setMemberRole('${m.id}',this.value)" style="background:var(--tech-dark);color:#fff;border:1px solid var(--tech-cyan);padding:4px;">${["member", "mercenary", "guest", "underboss", "boss"].map(r => `<option value="${r}" ${m.role === r ? "selected" : ""}>${r}</option>`).join("")}</select>` : esc(m.role)}</td>
     <td>${isBoss() ? `<button onclick="deleteMember('${m.id}')" class="btn-accent" style="padding:4px 12px;font-size:12px;">削除</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="4">メンバー未登録</td></tr>'}</table></section>`;
 }
 
@@ -901,7 +901,7 @@ function render() {
   if (h !== lastHash) {
     lastHash = h;
     if (firstPaint) { firstPaint = false; window.scrollTo(0, 0); }
-    else { const top = document.getElementById("app").offsetTop; window.scrollTo(0, Math.max(0, top - 8)); }
+    else { const nav = document.querySelector(".tech-nav"); const top = nav ? nav.getBoundingClientRect().top + window.scrollY : 0; window.scrollTo(0, Math.max(0, top - 8)); }
   }
   else { window.scrollTo(0, y); }
   lastSig = JSON.stringify(CACHE);
@@ -911,7 +911,7 @@ document.getElementById("loginBtn").onclick = async () => {
   if (isBoss()) { await logoutUser(); return; }
   const sel = document.getElementById("loginUserSel");
   const cur = currentUser();
-  sel.innerHTML = CACHE.members.filter(m => m.is_active !== false).map(m => `<option value="${m.name}" ${cur && cur.name === m.name ? "selected" : ""}>${m.name}（${m.role}）</option>`).join("");
+  sel.innerHTML = CACHE.members.filter(m => m.is_active !== false && m.role !== "guest").map(m => `<option value="${m.name}" ${cur && cur.name === m.name ? "selected" : ""}>${m.name}（${m.role}）</option>`).join("");
   document.getElementById("logoutBtn").style.display = cur ? "" : "none";
   document.getElementById("loginModal").classList.remove("hidden");
 };

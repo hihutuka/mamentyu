@@ -80,7 +80,7 @@ ALTER TABLE crime_jobs ADD CONSTRAINT crime_jobs_status_check CHECK (status in (
 ALTER TABLE pool_transactions DROP CONSTRAINT IF EXISTS pool_transactions_type_check;
 ALTER TABLE pool_transactions ADD CONSTRAINT pool_transactions_type_check CHECK (type in ('入金','出金'));
 ALTER TABLE members DROP CONSTRAINT IF EXISTS members_role_check;
-ALTER TABLE members ADD CONSTRAINT members_role_check CHECK (role in ('boss','underboss','member','mercenary'));
+ALTER TABLE members ADD CONSTRAINT members_role_check CHECK (role in ('boss','underboss','member','mercenary','guest'));
 ALTER TABLE crime_types DROP CONSTRAINT IF EXISTS crime_types_category_check;
 ALTER TABLE crime_types ADD CONSTRAINT crime_types_category_check CHECK (category in ('準大型','大型'));
 
@@ -116,7 +116,7 @@ returns table(id uuid, name text, role text)
 language sql security definer set search_path = public as $$
   select m.id, m.name, m.role from members m
   join member_secrets s on s.member_id = m.id
-  where m.name = p_name and m.is_active is distinct from false
+  where m.name = p_name and m.is_active is distinct from false and m.role <> 'guest'
     and s.password_hash = md5(s.salt || p_password);
 $$;
 
